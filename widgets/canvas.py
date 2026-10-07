@@ -17,7 +17,7 @@ class Canvas(QWidget):
         self.points = [
             Point(300, 400),
             Point(350, 200),
-            Point(350, 500)
+            Point(350, 300)
         ]
 
         self.edges = [
@@ -56,3 +56,4 @@ class Canvas(QWidget):
             edge.draw(painter)
         for point in self.points:
             point.draw(painter)
+        

@@ -2,7 +2,7 @@ import sys
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor
 from PyQt6.QtCore import Qt, QPointF
-from widgets import Canvas
+from widgets.canvas import Canvas
 
 class MainWindow(QMainWindow):
     def __init__(self):
