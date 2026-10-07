@@ -1,6 +1,6 @@
 from abc import abstractmethod
 
-from .point import Point
+from models import Point
 from core.enums import EdgeType
 from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
 from models.edges import *
