@@ -12,27 +12,26 @@ class Canvas(QWidget):
         
        
         test_point = Point(350, 120)
-        poly_points = [
+        points = [[
                     Point(150, 100),
                     test_point,
                     Point(300, 300),
                     Point(120, 250),
-                ]
-        poly_points2 = [
-                    Point(150, 100),
+                ],[
+                    Point(300, 250),
                     test_point,
-                    Point(300, 300),
-                    Point(120, 250),
-                ]
-        poly_points3 = [
-                            Point(100, 100),
-                            test_point,
-                            Point(200, 300)
-                        ]
+                    Point(100, 300),
+                    Point(50, 300),
+                ],[
+                    Point(100, 100),
+                    test_point,
+                    Point(200, 300)
+                ]            
+        ]
         
-        self.polygons = [Polygon(poly_points),
-                         Polygon(poly_points2),
-                         Polygon(poly_points3)]
+        self.polygons = [Polygon(points[0]),
+                         Polygon(points[1]),
+                         Polygon(points[2])]
         
 
         self.dragged_point: Point | None = None
