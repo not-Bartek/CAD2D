@@ -1,29 +1,130 @@
+from typing import Optional
+
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt6.QtGui import QPainter, QPen, QBrush, QColor
 from PyQt6.QtCore import Qt, QPointF
 from models import *
+from models.polygon import Polygon
 
 class Canvas(QWidget):
-    def __init__(self):
+    def __init__(self, parent=None):
         super().__init__()
         
-        # 1. Punkty statyczne do odcinka i okręgu
-        self.line_p1 = QPointF(130, 100)
-        self.line_p2 = QPointF(100, 50)
-        self.circle_center = QPointF(500, 300)
-        self.circle_radius = 60.0
+       
+        test_point = Point(350, 120)
+        poly_points = [
+                    Point(150, 100),
+                    test_point,
+                    Point(300, 300),
+                    Point(120, 250),
+                ]
+        poly_points2 = [
+                    Point(150, 100),
+                    test_point,
+                    Point(300, 300),
+                    Point(120, 250),
+                ]
+        poly_points3 = [
+                            Point(100, 100),
+                            test_point,
+                            Point(200, 300)
+                        ]
+        
+        self.polygons = [Polygon(poly_points),
+                         Polygon(poly_points2),
+                         Polygon(poly_points3)]
+        
+
+        self.dragged_point: Point | None = None
+        self.dragged_polygon: Polygon | None = None
+        self.last_mouse_pos: QPointF | None = None
+
+        self.hovered_point: Optional[Point] = None
+        self.hit_radius: float = 9.0
+
+        self.setMouseTracking(True)
+
+    def find_point_at(self, x: float, y: float) -> Optional[Point]:
+        """Zwraca pierwszy punkt pod zadanymi współrzędnymi (od tyłu listy, by brać wierzchnie)."""
+        for poly in reversed(self.polygons):
+            for pt in reversed(poly.points):
+                if pt.is_hit(x, y, self.hit_radius):
+                    return pt
+        return None
+    
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position()
+
+            target_pt = self.find_point_at(pos.x(), pos.y())
+            if target_pt:
+                self.dragged_point = target_pt
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.update()
+                return
+
+            for poly in reversed(self.polygons):
+                if poly.contains(pos.x(), pos.y()):
+                    self.dragged_polygon = poly  # <-- Zapamiętujemy TEN konkretny poly
+                    self.last_mouse_pos = pos
+                    self.setCursor(Qt.CursorShape.SizeAllCursor)
+                    self.update()
+                    return
+
+    def mouseMoveEvent(self, event):
+            pos = event.position()
+
+            # A. Przeciąganie punktu
+            if self.dragged_point is not None:
+                self.dragged_point.move_to(pos.x(), pos.y())
+                self.update()
+                return
+
+            # B. Przesuwanie całego wielokąta
+            if self.dragged_polygon is not None and self.last_mouse_pos is not None:
+                dx = pos.x() - self.last_mouse_pos.x()
+                dy = pos.y() - self.last_mouse_pos.y()
+                self.dragged_polygon.move_by(dx, dy)
+                self.last_mouse_pos = pos
+                self.update()
+                return
+            new_hovered = self.find_point_at(pos.x(), pos.y())
+        
+            # Jeśli stan najechania na punkt się zmienił, odświeżamy widok
+            if new_hovered != self.hovered_point:
+                self.hovered_point = new_hovered
+                self.update()
+
+            is_over_any_polygon = any(poly.contains(pos.x(), pos.y()) for poly in self.polygons)
+
+            # Ustawienie odpowiedniego kształtu kursora
+            if self.hovered_point is not None:
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
+            elif is_over_any_polygon:
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
 
 
-        self.points = [
-            Point(300, 400),
-            Point(350, 200),
-            Point(350, 300)
-        ]
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragged_point = None
+            self.dragged_polygon = None
+            self.last_mouse_pos = None
 
-        self.edges = [
-            StraightEdge(self.points[0], self.points[1]),
-            StraightEdge(self.points[1], self.points[2]),
-        ]
+            # Aktualizujemy kursor po puszczeniu przycisku
+            pos = event.position()
+            self.hovered_point = self.find_point_at(pos.x(), pos.y())
+            is_over_any_polygon = any(poly.contains(pos.x(), pos.y()) for poly in self.polygons)
+
+            if self.hovered_point:
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
+            elif is_over_any_polygon:
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+
+            self.update()
 
     # --- PĘTLA RYSOWANIA ---
     def paintEvent(self, event):
@@ -34,26 +135,9 @@ class Canvas(QWidget):
         # Tło
         painter.fillRect(self.rect(), Qt.GlobalColor.white)
 
-        # A. Rysowanie linii między dwoma punktami
-        pen_line = QPen(QColor(50, 50, 50), 1)
-        painter.setPen(pen_line)
-        painter.drawLine(self.line_p1, self.line_p2)
-
-        # B. Rysowanie okręgu
-        pen_circle = QPen(QColor(0, 120, 215), 2)
-        painter.setPen(pen_circle)
-        painter.setBrush(Qt.BrushStyle.NoBrush)  # Bez wypełnienia środka
-        painter.drawEllipse(self.circle_center, self.circle_radius, self.circle_radius)
-
-        # C. Punkty końcowe linii: małe, jednolite i bez kolorowego obrysu
-        endpoint_color = QColor(50, 50, 50)
-        painter.setPen(QPen(endpoint_color, 1))
-        painter.setBrush(QBrush(endpoint_color))
-        painter.drawEllipse(self.line_p1, 2, 2)
-        painter.drawEllipse(self.line_p2, 2, 2)
-
-        for edge in self.edges:
-            edge.draw(painter)
-        for point in self.points:
-            point.draw(painter)
+        for polygon in self.polygons:
+            polygon.draw(painter)
+            for pt in polygon.points:
+                is_active = pt is self.dragged_point
+                pt.draw(painter, radius=2.0, is_active=is_active)
         

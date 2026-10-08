@@ -5,14 +5,19 @@ from core.enums import EdgeType
 from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
 from models.edges import *
 from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
+from abc import ABC, abstractmethod
 
-class Edge:
+class Edge(ABC):
     def __init__(self, p1: Point, p2: Point, color: QColor = QColor(50, 50, 50), width: int = 1):
         self.p1 = p1
         self.p2 = p2
         self.color = color
         self.width = width
-
+        
+    def has_point(self, point: Point) -> bool:
+        """Sprawdza, czy ta krawędź jest podpięta pod dany punkt."""
+        return self.p1 is point or self.p2 is point
+    
     @abstractmethod
     def draw(self, painter: QPainter):
         pass

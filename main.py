@@ -7,7 +7,7 @@ from widgets.canvas import Canvas
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Podstawy PyQt6: Canvas i Rysowanie")
+        self.setWindowTitle("CAD 2D - Grafika Komputerowa projekt 1")
         self.resize(700, 500)
         self.setCentralWidget(Canvas())
 
