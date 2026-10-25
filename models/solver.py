@@ -24,8 +24,10 @@ from models.edges import BezierEdge
 
 
 EPS = 1e-3
-SETTLE_ITERS = 800
-PROPAGATE_ITERS = 64
+SETTLE_ITERS = 120          # pełna naprawa (menu / mouse-up)
+SETTLE_ITERS_INTERACTIVE = 24  # podczas przeciągania
+PROPAGATE_ITERS = 16
+PROPAGATE_ITERS_INTERACTIVE = 3
 
 
 def _all_points(polygons: list[Polygon]):
@@ -247,8 +249,10 @@ class ConstraintSolver:
     def scene_ok(self, polygons: list[Polygon]) -> bool:
         for poly in polygons:
             recompute_all_arcs(poly.edges)
+        # continuity_satisfied też woła recompute — pomijamy powtórkę
         return self.all_satisfied() and all(
-            continuity_satisfied(poly.edges) for poly in polygons
+            continuity_satisfied(poly.edges, recompute_arcs=False)
+            for poly in polygons
         )
 
     def _component_satisfied(self, fixed: set[int]) -> bool:
@@ -294,11 +298,13 @@ class ConstraintSolver:
         pinned: set[int] | None = None,
         dist: dict[int, int] | None = None,
         only_ids: set[int] | None = None,
+        max_iters: int | None = None,
     ) -> bool:
         pinned = pinned or set()
         dist = dist or {}
         lengths = self.store.all_lengths()
         parallels = self.store.all_parallels()
+        limit = SETTLE_ITERS if max_iters is None else max_iters
 
         if only_ids is not None:
             lengths = [c for c in lengths if id(c.p1) in only_ids or id(c.p2) in only_ids]
@@ -310,7 +316,7 @@ class ConstraintSolver:
         if not lengths and not parallels:
             return True
 
-        for _ in range(SETTLE_ITERS):
+        for _ in range(limit):
             if priority_parallel is not None and not priority_parallel.is_satisfied(EPS):
                 _fix_parallel(priority_parallel, self.store, pinned, dist)
 
@@ -363,11 +369,12 @@ class ConstraintSolver:
         pinned: set[int] | None = None,
         seeds: list[Point] | None = None,
         prefer_adjust: Point | None = None,
+        interactive: bool = False,
     ) -> bool:
         """
-        Jedna pętla projekcji: długości/∥ → sync uchwytów → ciągłości G1/C1.
-        Błąd propaguje się w obie strony (bez zamrażania równoległości vs Béziera).
-        pinned = punkty trzymane (np. pod kursorem).
+        Projekcja: ciągłości ↔ długości/∥.
+        interactive=True — krótka pętla pod przeciąganie myszą (płynność);
+        pełna naprawa przy interactive=False (menu / mouse-up).
         """
         pinned = set(pinned or set())
         seed_pts = list(seeds or [])
@@ -376,8 +383,14 @@ class ConstraintSolver:
             seed_pts = [by_id[i] for i in pinned if i in by_id]
         dist = _graph_distance(seed_pts, self.store, polygons) if seed_pts else {}
 
+        outer = PROPAGATE_ITERS_INTERACTIVE if interactive else PROPAGATE_ITERS
+        settle_cap = SETTLE_ITERS_INTERACTIVE if interactive else SETTLE_ITERS
+
         dirty: deque[Point] = deque(seed_pts)
         in_q = {id(p) for p in seed_pts}
+        lengths = self.store.all_lengths()
+        parallels = self.store.all_parallels()
+        has_constraints = bool(lengths or parallels)
 
         def enqueue(p: Point) -> None:
             if id(p) in pinned:
@@ -427,55 +440,62 @@ class ConstraintSolver:
                 in_q.discard(id(p))
                 before = _snapshot(polygons)
 
-                for lc in self.store.all_lengths():
+                for lc in lengths:
                     if not lc.involves_point(p) or lc.is_satisfied(EPS):
                         continue
                     _fix_length_minimal(lc, pinned, dist)
 
-                for pc in self.store.all_parallels():
+                for pc in parallels:
                     if not pc.involves_point(p) or pc.is_satisfied(EPS):
                         continue
                     _fix_parallel(pc, self.store, pinned, dist)
 
                 enqueue_moved(before)
 
-        for _ in range(PROPAGATE_ITERS):
+        # Szybka ścieżka: brak ograniczeń — jedna ciągłość + uchwyty
+        if not has_constraints:
+            apply_continuities()
+            apply_continuities(handles_only=True)
+            return self.scene_ok(polygons)
+
+        for _ in range(outer):
             if self.scene_ok(polygons):
                 return True
 
-            # 1) ciągłość (CP/styczne → ruch przyległych krawędzi)
             before = _snapshot(polygons)
             apply_continuities()
             enqueue_moved(before)
 
-            # 2) propagacja ∥ / długości od ruszonych wierzchołków
             drain_dirty()
             before = _snapshot(polygons)
-            self.settle_all(pinned=pinned, dist=dist)
+            self.settle_all(pinned=pinned, dist=dist, max_iters=settle_cap)
             for poly in polygons:
                 sync_bezier_handles_from_snap(poly.edges, before, pinned=pinned)
-            enqueue_moved(before)
 
-            # 3) dograj uchwyty do nowych kierunków (bez odwracania ∥ na końcu)
+            apply_continuities(handles_only=True)
+
+            if self.scene_ok(polygons):
+                return True
+
+            if interactive:
+                # w drag nie dokładamy drugiej pełnej rundy settle
+                break
+
             before = _snapshot(polygons)
             apply_continuities()
             enqueue_moved(before)
-
-            # 4) jeszcze raz ograniczenia — mają ostatnie słowo na wierzchołkach
             drain_dirty()
             before = _snapshot(polygons)
-            self.settle_all(pinned=pinned, dist=dist)
+            self.settle_all(pinned=pinned, dist=dist, max_iters=settle_cap)
             for poly in polygons:
                 sync_bezier_handles_from_snap(poly.edges, before, pinned=pinned)
-
-            # 5) wyłącznie uchwyty — wierzchołki (i ∥) zostają po settle
             apply_continuities(handles_only=True)
 
             if self.scene_ok(polygons):
                 return True
 
             for poly in polygons:
-                if not continuity_satisfied(poly.edges):
+                if not continuity_satisfied(poly.edges, recompute_arcs=False):
                     for v in poly.points:
                         if vertex_has_curve_neighbor(poly.edges, v):
                             enqueue(v)

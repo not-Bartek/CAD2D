@@ -314,9 +314,11 @@ class Canvas(QWidget):
         pinned_extra: set[int] | None = None,
         allow_translate: bool = True,
         seeds: list[Point] | None = None,
+        interactive: bool = True,
     ) -> None:
         """
-        Punkt pod kursorem + propagacja błędu: ∥ / długości ↔ ciągłości Béziera.
+        Punkt pod kursorem + propagacja błędu: ∥ / długości ↔ ciągłości.
+        interactive=True podczas ruchu myszy (szybko); False na mouse-up (dokładniej).
         """
         if self._drag_snap is None or self._drag_origin is None:
             return
@@ -334,19 +336,10 @@ class Canvas(QWidget):
             pinned=pinned,
             seeds=seed_list,
             prefer_adjust=prefer_adjust or pt,
+            interactive=interactive,
         )
         pt.move_to(tx, ty)
-        if ok and self.solver.scene_ok(self.polygons):
-            return
-
-        ok = self.solver.propagate_repair(
-            self.polygons,
-            pinned=pinned,
-            seeds=seed_list,
-            prefer_adjust=prefer_adjust or pt,
-        )
-        pt.move_to(tx, ty)
-        if ok and self.solver.scene_ok(self.polygons):
+        if ok:
             return
 
         if allow_translate:
@@ -657,11 +650,10 @@ class Canvas(QWidget):
                 and self._drag_origin is not None
             ):
                 self._drag_control_point(pos.x(), pos.y())
-                self._pick_dirty = True
                 self.update()
                 return
 
-            # B. Przeciąganie wierzchołka (punkt swobodny → lokalna naprawa / fallback translacji)
+            # B. Przeciąganie wierzchołka (lekka naprawa w trakcie; pełna na mouse-up)
             if self.dragged_point is not None and self._drag_snap is not None and self._drag_origin is not None:
                 self.solver.move_point_or_translate(
                     self.dragged_point,
@@ -672,7 +664,6 @@ class Canvas(QWidget):
                     self._drag_origin,
                 )
                 self._apply_continuity_after_vertex_drag(pos.x(), pos.y())
-                self._pick_dirty = True
                 self.update()
                 return
 
@@ -682,7 +673,6 @@ class Canvas(QWidget):
                 dy = pos.y() - self.last_mouse_pos.y()
                 self.dragged_polygon.move_by(dx, dy)
                 self.last_mouse_pos = pos
-                self._pick_dirty = True
                 self.update()
                 return
 
@@ -695,6 +685,37 @@ class Canvas(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            # dokładna naprawa raz na koniec przeciągania (nie w każdym mouseMove)
+            if (
+                self.dragged_point is not None
+                and self._drag_snap is not None
+                and self._drag_origin is not None
+            ):
+                pt = self.dragged_point
+                tx, ty = pt.x, pt.y
+                if self._dragging_control:
+                    owner = None
+                    pinned_extra: set[int] = set()
+                    for poly in self.polygons:
+                        owner = bezier_for_control(poly.edges, pt)
+                        if owner is not None:
+                            pinned_extra.add(id(owner.p1))
+                            pinned_extra.add(id(owner.p2))
+                            break
+                    self._propagate_after_drag(
+                        pt,
+                        tx,
+                        ty,
+                        prefer_adjust=pt,
+                        pinned_extra=pinned_extra,
+                        allow_translate=False,
+                        seeds=[pt],
+                        interactive=False,
+                    )
+                    pt.move_to(tx, ty)
+                else:
+                    self._propagate_after_drag(pt, tx, ty, interactive=False)
+
             self.dragged_point = None
             self.dragged_polygon = None
             self.last_mouse_pos = None
@@ -703,7 +724,6 @@ class Canvas(QWidget):
             self._dragging_control = False
             self._pick_dirty = True
 
-            # Aktualizujemy kursor po puszczeniu przycisku
             pos = event.position()
             self._update_hover_cursor(pos.x(), pos.y())
             self.update()

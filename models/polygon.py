@@ -142,7 +142,7 @@ class Polygon:
         return None
 
     def draw(self, painter: QPainter, algorithm: LineAlgorithm = LineAlgorithm.LIBRARY):
-        recompute_all_arcs(self.edges)
+        # geometria łuków jest aktualizowana przy edycji — bez recompute na każdy paint
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(self.fill_color))
         painter.drawPolygon(self.to_qpolygonf())

@@ -94,7 +94,8 @@ class BezierEdge(Edge):
         )
 
     def draw(self, painter: QPainter, algorithm: LineAlgorithm = LineAlgorithm.LIBRARY):
-        pts = self.sample_points(64)
+        # mniej próbek = płynniejszy paint; jakość nadal wystarczająca
+        pts = self.sample_points(32)
         for i in range(len(pts) - 1):
             draw_segment(
                 painter,
@@ -203,7 +204,7 @@ class ArcEdge(Edge):
         return None
 
     def draw(self, painter: QPainter, algorithm: LineAlgorithm = LineAlgorithm.LIBRARY):
-        pts = self.sample_points(64)
+        pts = self.sample_points(32)
         for i in range(len(pts) - 1):
             draw_segment(
                 painter,

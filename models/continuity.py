@@ -231,9 +231,11 @@ def enforce_continuity_at(
     pinned: set[int] | None = None,
     frozen_verts: set[int] | None = None,
     dist: dict[int, int] | None = None,
+    refresh_arcs: bool = True,
 ) -> None:
     """
     Egzekwuje ciągłość. Preferuje uchwyty Béziera; łuki dogrywane przez recompute.
+    refresh_arcs=False — bez wielokrotnego recompute (batch w enforce_all).
     """
     if vertex.is_control:
         return
@@ -242,7 +244,6 @@ def enforce_continuity_at(
 
     cont = vertex.continuity
     if cont == Continuity.G0:
-        recompute_all_arcs(edges)
         return
 
     # C1 nie dotyczy łuków — traktuj jak G1 przy sąsiedztwie łuku
@@ -253,7 +254,8 @@ def enforce_continuity_at(
     frozen_verts = frozen_verts or set()
     dist = dist or {}
 
-    recompute_all_arcs(edges)
+    if refresh_arcs:
+        recompute_all_arcs(edges)
 
     incoming, outgoing = adjacent_edges(edges, vertex)
     if incoming is None or outgoing is None:
@@ -264,8 +266,6 @@ def enforce_continuity_at(
     in_bezier = isinstance(incoming, BezierEdge)
     out_bezier = isinstance(outgoing, BezierEdge)
 
-    # Łuk z G1 na tym wierzchołku: geometria ze stycznej drugiej strony — OK po recompute.
-    # Dogrywamy stronę nie-łukową / Béziera gdy łuk jest „pasywny” albo G0 na tym końcu.
     tin = _incoming_tangent(incoming, vertex)
     tout = _outgoing_tangent(outgoing, vertex)
     if tin is None or tout is None:
@@ -278,7 +278,6 @@ def enforce_continuity_at(
         elif in_bezier and (prefer_adjust is incoming.c1 or prefer_adjust is incoming.c2):
             prefer_out = True
     elif out_arc and not in_arc:
-        # łuk wychodzący — trzymaj łuk (recompute), rusz stronę wchodzącą tylko gdy trzeba
         prefer_out = False
     elif in_arc and not out_arc:
         prefer_out = True
@@ -293,9 +292,7 @@ def enforce_continuity_at(
 
     def fix_out_to_match_in() -> bool:
         if out_arc:
-            # łuk dogrywany przez recompute ze stycznej incoming
-            recompute_all_arcs(edges)
-            return True
+            return True  # geometria łuku w końcowym recompute_all_arcs
         if cont == Continuity.C1:
             if out_bezier:
                 return _set_outgoing_bezier_handle(outgoing, vertex, tin[0], tin[1], pinned)
@@ -314,7 +311,6 @@ def enforce_continuity_at(
 
     def fix_in_to_match_out() -> bool:
         if in_arc:
-            recompute_all_arcs(edges)
             return True
         if cont == Continuity.C1:
             if in_bezier:
@@ -339,7 +335,8 @@ def enforce_continuity_at(
         if not fix_in_to_match_out():
             fix_out_to_match_in()
 
-    recompute_all_arcs(edges)
+    if refresh_arcs:
+        recompute_all_arcs(edges)
 
 
 def enforce_all_continuities(
@@ -356,7 +353,12 @@ def enforce_all_continuities(
                 continue
             seen.add(id(v))
             enforce_continuity_at(
-                edges, v, pinned=pinned, frozen_verts=frozen_verts, dist=dist
+                edges,
+                v,
+                pinned=pinned,
+                frozen_verts=frozen_verts,
+                dist=dist,
+                refresh_arcs=False,
             )
     recompute_all_arcs(edges)
 
@@ -372,33 +374,33 @@ def enforce_after_move(
     pinned = set(pinned or set())
     frozen_verts = set(frozen_verts or set())
 
+    recompute_all_arcs(edges)
     if moved.is_control:
         pinned.add(id(moved))
         owner = bezier_for_control(edges, moved)
         if owner is not None:
             enforce_continuity_at(
                 edges, owner.p1, prefer_adjust=moved, pinned=pinned,
-                frozen_verts=frozen_verts, dist=dist,
+                frozen_verts=frozen_verts, dist=dist, refresh_arcs=False,
             )
             enforce_continuity_at(
                 edges, owner.p2, prefer_adjust=moved, pinned=pinned,
-                frozen_verts=frozen_verts, dist=dist,
+                frozen_verts=frozen_verts, dist=dist, refresh_arcs=False,
             )
-            enforce_all_continuities(
-                edges, pinned=pinned, frozen_verts=frozen_verts, dist=dist
-            )
-        return
-
-    enforce_continuity_at(
-        edges, moved, pinned=pinned, frozen_verts=frozen_verts, dist=dist
-    )
-    incoming, outgoing = adjacent_edges(edges, moved)
-    for e in (incoming, outgoing):
-        if isinstance(e, (BezierEdge, ArcEdge)):
-            other = e.p2 if e.p1 is moved else e.p1
-            enforce_continuity_at(
-                edges, other, pinned=pinned, frozen_verts=frozen_verts, dist=dist
-            )
+    else:
+        enforce_continuity_at(
+            edges, moved, pinned=pinned, frozen_verts=frozen_verts,
+            dist=dist, refresh_arcs=False,
+        )
+        incoming, outgoing = adjacent_edges(edges, moved)
+        for e in (incoming, outgoing):
+            if isinstance(e, (BezierEdge, ArcEdge)):
+                other = e.p2 if e.p1 is moved else e.p1
+                enforce_continuity_at(
+                    edges, other, pinned=pinned, frozen_verts=frozen_verts,
+                    dist=dist, refresh_arcs=False,
+                )
+    # jedna zbiorcza dogrywka zamiast N× enforce_all
     enforce_all_continuities(
         edges, pinned=pinned, frozen_verts=frozen_verts, dist=dist
     )
@@ -421,11 +423,17 @@ def sync_bezier_handles_from_snap(
             dx = e.p2.x - snap[id(e.p2)][0]
             dy = e.p2.y - snap[id(e.p2)][1]
             e.c2.move_to(snap[id(e.c2)][0] + dx, snap[id(e.c2)][1] + dy)
-    recompute_all_arcs(edges)
+    # łuki przelicza kolejny enforce / scene_ok — tu zbędne przy każdym sync
 
 
-def continuity_satisfied(edges: list[Edge], eps: float = 1e-3) -> bool:
-    recompute_all_arcs(edges)
+def continuity_satisfied(
+    edges: list[Edge],
+    eps: float = 1e-3,
+    *,
+    recompute_arcs: bool = True,
+) -> bool:
+    if recompute_arcs:
+        recompute_all_arcs(edges)
     for e in edges:
         if isinstance(e, ArcEdge):
             if (
