@@ -48,10 +48,10 @@ Ikona okna pochodzi z `logo.png` (zaokrąglana przy starcie w `main.py`).
 
 ```
 CAD_G1/
-├── main.py                 # QApplication, MainWindow, wybór Bresenham/library
+├── main.py                 # QApplication, MainWindow, radio Bresenham, F1/Dokumentacja
 ├── logo.png                # ikona aplikacji
 ├── requirements.txt
-├── readme.md
+├── readme.md               # pełna dokumentacja (też w oknie Pomocy)
 ├── core/                   # algorytmy „czyste” (bez Qt-modeli sceny)
 │   ├── enums.py            # EdgeType, Continuity
 │   ├── line_draw.py        # Bresenham + draw_segment
@@ -63,9 +63,11 @@ CAD_G1/
 │   ├── polygon.py
 │   ├── constraints.py      # LengthConstraint, ParallelConstraint, store
 │   ├── continuity.py       # G0/G1/C1, recompute łuków
-│   └── solver.py           # settle, propagacja, drag
+│   ├── solver.py           # settle, propagacja, drag
+│   └── demo_scene.py       # scena startowa (poly + ograniczenia + Bézier/łuk)
 └── widgets/
-    └── canvas.py           # UI: mysz, menu, pick buffer, drag
+    ├── canvas.py           # UI: mysz, menu, pick buffer, drag
+    └── help_dialog.py      # dokumentacja z poziomu aplikacji
 ```
 
 ### Podział odpowiedzialności
@@ -146,7 +148,17 @@ Spełnienie:
 
 ## 4. Interfejs użytkownika
 
-Główny widget: `widgets/canvas.py`.
+Główny widget: `widgets/canvas.py`. Dokumentacja w aplikacji: przycisk **Dokumentacja** / **F1** (`widgets/help_dialog.py`).
+
+### Scena startowa (`models/demo_scene.py`)
+
+Po uruchomieniu widać od razu:
+
+- 2 wielokąty (prostokąt + trójkąt) — nowy = wpis w `POLYGON_SPECS`
+- krawędź Béziera (prawy bok prostokąta) z G1
+- łuk (lewy bok trójkąta), oba końce G0 ⇒ \(R = L/2\)
+- długość lewego boku prostokąta
+- dwie równoległości (góra∥dół prostokąta oraz góra∥podstawa trójkąta)
 
 | Akcja | Zachowanie |
 |-------|------------|
@@ -414,6 +426,7 @@ Dla scen ćwiczeniowych (kilka wielokątów, \(V \lesssim 30\)) wszystkie ście�
 
 - **G** — siatka (10 px / 100 px)
 - **Esc** — anuluj oczekującą równoległość
+- **F1** / przycisk **Dokumentacja** — instrukcja, założenia, model, algorytmy + podgląd `readme.md`
 
 ### Menu krawędzi — typ krzywej
 

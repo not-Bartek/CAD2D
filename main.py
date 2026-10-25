@@ -10,11 +10,15 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QButtonGroup,
     QLabel,
+    QPushButton,
 )
-from PyQt6.QtGui import QIcon, QImage, QPainter, QPainterPath, QPixmap
+from PyQt6.QtGui import QIcon, QImage, QPainter, QPainterPath, QPixmap, QKeySequence, QAction
 from PyQt6.QtCore import Qt, QRectF
 from widgets.canvas import Canvas
+from widgets.help_dialog import HelpDialog
 from core.line_draw import LineAlgorithm
+
+PROJECT_ROOT = Path(__file__).resolve().parent
 
 
 def load_app_icon(path: Path) -> QIcon:
@@ -52,7 +56,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("CAD 2D - Grafika Komputerowa projekt 1")
         self.setWindowIcon(icon)
-        self.resize(700, 500)
+        self.resize(720, 560)
 
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -71,6 +75,11 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.radio_library)
         bar.addWidget(self.radio_bresenham)
         bar.addStretch()
+
+        help_btn = QPushButton("Dokumentacja")
+        help_btn.setToolTip("Instrukcja, założenia, model danych (F1)")
+        help_btn.clicked.connect(self._show_help)
+        bar.addWidget(help_btn)
         layout.addLayout(bar)
 
         self.canvas = Canvas()
@@ -79,6 +88,14 @@ class MainWindow(QMainWindow):
 
         self.radio_library.toggled.connect(self._on_algorithm_changed)
         self.radio_bresenham.toggled.connect(self._on_algorithm_changed)
+
+        help_action = QAction("Dokumentacja", self)
+        help_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
+        help_action.triggered.connect(self._show_help)
+        self.addAction(help_action)
+
+    def _show_help(self) -> None:
+        HelpDialog(PROJECT_ROOT, self).exec()
 
     def _on_algorithm_changed(self, checked: bool) -> None:
         if not checked:
@@ -91,7 +108,7 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    icon = load_app_icon(Path(__file__).resolve().parent / "logo.png")
+    icon = load_app_icon(PROJECT_ROOT / "logo.png")
     app.setWindowIcon(icon)
     window = MainWindow(icon)
     window.show()

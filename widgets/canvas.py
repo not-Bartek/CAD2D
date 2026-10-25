@@ -10,6 +10,7 @@ from models.constraints import (
     same_edge,
 )
 from models.solver import ConstraintSolver, snapshot_positions, restore_positions
+from models.demo_scene import build_polygons, apply_demo_relations
 from models.continuity import (
     sync_bezier_handles_from_snap,
     vertex_has_curve_neighbor,
@@ -37,22 +38,7 @@ class Canvas(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        points = [[
-                    Point(150, 100),
-
-                    Point(300, 300),
-                    Point(120, 250),
-                ],[
-                    Point(300, 250),
-
-                    Point(100, 300),
-                    Point(50, 300),
-                ]
-        ]
-
-        self.polygons = [Polygon(points[0]),
-                         Polygon(points[1])
-                         ]
+        self.polygons = build_polygons()
 
         self.dragged_point: Point | None = None
         self.dragged_polygon: Polygon | None = None
@@ -73,6 +59,7 @@ class Canvas(QWidget):
 
         self.constraints = ConstraintStore()
         self.solver = ConstraintSolver(self.constraints)
+        apply_demo_relations(self.polygons, self.solver)
 
         self._drag_snap: dict[int, tuple[float, float]] | None = None
         self._drag_origin: tuple[float, float] | None = None
