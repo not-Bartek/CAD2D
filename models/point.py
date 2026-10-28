@@ -15,17 +15,14 @@ class Point:
         self.continuity_explicit = False
 
     def move_to(self, target_x: float, target_y: float):
-        """Ustawia pozycję bezwzględną."""
         self.x = target_x
         self.y = target_y
 
     def move_by(self, dx: float, dy: float):
-        """Przemieszcza punkt o wektor (przydatne przy propagacji)."""
         self.x += dx
         self.y += dy
 
     def distance_to(self, x: float, y: float) -> float:
-        """Oblicza odległość euklidesową od podanych współrzędnych."""
         return math.hypot(self.x - x, self.y - y)
 
     def to_qpointf(self) -> QPointF:

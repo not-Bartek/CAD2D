@@ -16,9 +16,50 @@ class Polygon:
         n = len(points)
         for i in range(n):
             self.edges.append(StraightEdge(self.points[i], self.points[(i + 1) % n]))
+        self.removed_edge: Edge | None = None
+
+    def is_open(self) -> bool:
+        return self.removed_edge is not None
+
+    def remove_edge(self, edge: Edge) -> bool:
+        if self.removed_edge is not None:
+            return False
+        if edge not in self.edges:
+            return False
+        if len(self.points) < 3:
+            return False
+        self.edges.remove(edge)
+        self.removed_edge = edge
+        return True
+
+    def restore_edge(self) -> bool:
+        if self.removed_edge is None:
+            return False
+        edge = self.removed_edge
+        self.removed_edge = None
+        if not any(p is edge.p1 for p in self.points) or not any(
+            p is edge.p2 for p in self.points
+        ):
+            return False
+        self.edges.append(edge)
+        self._resort_edges()
+        recompute_all_arcs(self.edges)
+        return True
+
+    def _resort_edges(self) -> None:
+        order = {id(p): i for i, p in enumerate(self.points)}
+        self.edges.sort(key=lambda e: order.get(id(e.p1), len(self.points)))
+
+    def ordered_path_points(self) -> list[Point]:
+        if self.removed_edge is None:
+            return list(self.points)
+        gap_next = self.removed_edge.p2
+        for i, p in enumerate(self.points):
+            if p is gap_next:
+                return self.points[i:] + self.points[:i]
+        return list(self.points)
 
     def move_by(self, dx: float, dy: float):
-        """Przesuwa cały wielokąt naraz."""
         moved: set[int] = set()
         for pt in self.points:
             if id(pt) in moved:
@@ -34,7 +75,6 @@ class Polygon:
         recompute_all_arcs(self.edges)
 
     def to_qpolygonf(self) -> QPolygonF:
-        """Obrys wypełnienia / hit-test — z próbkami Béziera i łuków."""
         qpoly = QPolygonF()
         for edge in self.edges:
             if isinstance(edge, (BezierEdge, ArcEdge)):
@@ -50,17 +90,25 @@ class Polygon:
         )
 
     def rebuild_edges(self):
-        """Przebudowuje krawędzie, zachowując Béziera / łuki gdy te same końce."""
         old: dict[tuple[int, int], Edge] = {}
         for e in self.edges:
             old[(id(e.p1), id(e.p2))] = e
+
+        gap_key = (
+            (id(self.removed_edge.p1), id(self.removed_edge.p2))
+            if self.removed_edge is not None
+            else None
+        )
 
         self.edges = []
         n = len(self.points)
         for i in range(n):
             p1 = self.points[i]
             p2 = self.points[(i + 1) % n]
-            prev = old.get((id(p1), id(p2)))
+            key = (id(p1), id(p2))
+            if key == gap_key:
+                continue
+            prev = old.get(key)
             if isinstance(prev, (BezierEdge, ArcEdge)):
                 self.edges.append(prev)
             else:
@@ -79,24 +127,33 @@ class Polygon:
                 prev_pt = self.points[(i - 1) % n]
                 next_pt = self.points[(i + 1) % n]
                 removed = [(prev_pt, point), (point, next_pt)]
+
+                merges_gap = self.removed_edge is not None and (
+                    self.removed_edge.p1 is point or self.removed_edge.p2 is point
+                )
+
                 self.points.pop(i)
+
+                if merges_gap:
+                    self.removed_edge = StraightEdge(prev_pt, next_pt)
+
                 self.rebuild_edges()
                 return removed
         return []
 
     def add_vertex_on_edge(self, edge: Edge) -> tuple[Point | None, tuple[Point, Point] | None]:
-        for i, e in enumerate(self.edges):
-            if e is edge:
-                removed = (edge.p1, edge.p2)
-                if isinstance(edge, (BezierEdge, ArcEdge)):
-                    pts = edge.sample_points(2)
-                    mid = Point(pts[1][0], pts[1][1])
-                else:
-                    mid = Point((edge.p1.x + edge.p2.x) / 2, (edge.p1.y + edge.p2.y) / 2)
-                self.points.insert(i + 1, mid)
-                self.rebuild_edges()
-                return mid, removed
-        return None, None
+        if edge not in self.edges:
+            return None, None
+        removed = (edge.p1, edge.p2)
+        if isinstance(edge, (BezierEdge, ArcEdge)):
+            pts = edge.sample_points(2)
+            mid = Point(pts[1][0], pts[1][1])
+        else:
+            mid = Point((edge.p1.x + edge.p2.x) / 2, (edge.p1.y + edge.p2.y) / 2)
+        idx = next(i for i, p in enumerate(self.points) if p is edge.p1)
+        self.points.insert(idx + 1, mid)
+        self.rebuild_edges()
+        return mid, removed
 
     def set_edge_bezier(self, edge: Edge) -> BezierEdge | None:
         for i, e in enumerate(self.edges):
@@ -114,7 +171,6 @@ class Polygon:
         return None
 
     def set_edge_arc(self, edge: Edge) -> ArcEdge | None:
-        """Przełącza na łuk; domyślnie oba końce G0 (R = L/2)."""
         for i, e in enumerate(self.edges):
             if e is edge:
                 if isinstance(e, ArcEdge):
@@ -142,10 +198,10 @@ class Polygon:
         return None
 
     def draw(self, painter: QPainter, algorithm: LineAlgorithm = LineAlgorithm.LIBRARY):
-        # geometria łuków jest aktualizowana przy edycji — bez recompute na każdy paint
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(self.fill_color))
-        painter.drawPolygon(self.to_qpolygonf())
+        if not self.is_open():
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(self.fill_color))
+            painter.drawPolygon(self.to_qpolygonf())
 
         for edge in self.edges:
             edge.draw(painter, algorithm)

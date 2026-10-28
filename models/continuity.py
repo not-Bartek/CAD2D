@@ -16,8 +16,6 @@ def _incoming_tangent(edge: Edge, vertex: Point) -> tuple[float, float] | None:
         t = edge.unit_tangent_at(vertex)
         if t is None:
             return None
-        # w p2 styczna unit_tangent jest w kierunku podróży (= wychodząca z łuku w p2);
-        # jako incoming tin = ta sama (kierunek ścieżki)
         return t
     other = edge.p1 if edge.p2 is vertex else edge.p2
     return (vertex.x - other.x, vertex.y - other.y)
@@ -148,7 +146,6 @@ def bezier_for_control(edges: list[Edge], cp: Point) -> BezierEdge | None:
 def _neighbor_tangent_for_arc_g1(
     edges: list[Edge], arc: ArcEdge, g1: Point
 ) -> tuple[float, float] | None:
-    """Styczna z sąsiedniej (nie-łukowej / już policzonej) krawędzi w końcu G1."""
     incoming, outgoing = adjacent_edges(edges, g1)
     if arc is outgoing and incoming is not None and incoming is not arc:
         if isinstance(incoming, ArcEdge):
@@ -170,7 +167,6 @@ def _neighbor_tangent_for_arc_g1(
 
 
 def recompute_all_arcs(edges: list[Edge]) -> None:
-    """Przelicza geometrię łuków (G0→półokrąg, G1→styczna sąsiada)."""
     for e in edges:
         if isinstance(e, ArcEdge):
             e.ensure_single_g1()
@@ -186,7 +182,6 @@ def recompute_all_arcs(edges: list[Edge]) -> None:
 
 
 def incident_arcs(edges: list[Edge], vertex: Point) -> list[ArcEdge]:
-    """Wszystkie łuki incydentne do wierzchołka."""
     result: list[ArcEdge] = []
     for e in edges:
         if isinstance(e, ArcEdge) and e.has_point(vertex):
@@ -195,10 +190,6 @@ def incident_arcs(edges: list[Edge], vertex: Point) -> list[ArcEdge]:
 
 
 def arc_g1_conflicts(edges: list[Edge], vertex: Point) -> list[Point]:
-    """
-    Drugie końce łuków incydentnych do vertex, które mają już G1.
-    (Na łuku może być tylko jeden koniec z G1.)
-    """
     seen: set[int] = set()
     conflicts: list[Point] = []
     for e in incident_arcs(edges, vertex):
@@ -210,11 +201,6 @@ def arc_g1_conflicts(edges: list[Edge], vertex: Point) -> list[Point]:
 
 
 def clear_other_arc_g1(edges: list[Edge], vertex: Point) -> list[Point]:
-    """
-    Po ustawieniu G1 na wierzchołku — drugie końce wszystkich incydentnych
-    łuków tracą G1 (G1 na vertex obowiązuje dla każdego łuku incydentnego).
-    Zwraca listę wierzchołków, którym zdjęto G1.
-    """
     cleared: list[Point] = []
     for other in arc_g1_conflicts(edges, vertex):
         other.continuity = Continuity.G0
@@ -233,10 +219,6 @@ def enforce_continuity_at(
     dist: dict[int, int] | None = None,
     refresh_arcs: bool = True,
 ) -> None:
-    """
-    Egzekwuje ciągłość. Preferuje uchwyty Béziera; łuki dogrywane przez recompute.
-    refresh_arcs=False — bez wielokrotnego recompute (batch w enforce_all).
-    """
     if vertex.is_control:
         return
     if not vertex_has_curve_neighbor(edges, vertex):
@@ -246,7 +228,6 @@ def enforce_continuity_at(
     if cont == Continuity.G0:
         return
 
-    # C1 nie dotyczy łuków — traktuj jak G1 przy sąsiedztwie łuku
     if cont == Continuity.C1 and vertex_has_arc_neighbor(edges, vertex):
         cont = Continuity.G1
 
@@ -273,7 +254,6 @@ def enforce_continuity_at(
 
     prefer_out = True
     if prefer_adjust is not None:
-        # lokalny uchwyt przy tym wierzchołku = autorytet krzywej
         local_out = out_bezier and (
             (prefer_adjust is outgoing.c1 and outgoing.p1 is vertex)
             or (prefer_adjust is outgoing.c2 and outgoing.p2 is vertex)
@@ -289,7 +269,6 @@ def enforce_continuity_at(
         elif out_bezier and (
             prefer_adjust is outgoing.c1 or prefer_adjust is outgoing.c2
         ):
-            # przeciągany jest daleki uchwyt — dograj lokalny (sibling) do sąsiada
             prefer_out = True
         elif in_bezier and (
             prefer_adjust is incoming.c1 or prefer_adjust is incoming.c2
@@ -310,7 +289,7 @@ def enforce_continuity_at(
 
     def fix_out_to_match_in() -> bool:
         if out_arc:
-            return True  # geometria łuku w końcowym recompute_all_arcs
+            return True
         if cont == Continuity.C1:
             if out_bezier:
                 return _set_outgoing_bezier_handle(outgoing, vertex, tin[0], tin[1], pinned)
@@ -418,7 +397,6 @@ def enforce_after_move(
                     edges, other, pinned=pinned, frozen_verts=frozen_verts,
                     dist=dist, refresh_arcs=False,
                 )
-    # jedna zbiorcza dogrywka zamiast N× enforce_all
     enforce_all_continuities(
         edges, pinned=pinned, frozen_verts=frozen_verts, dist=dist
     )
@@ -441,7 +419,6 @@ def sync_bezier_handles_from_snap(
             dx = e.p2.x - snap[id(e.p2)][0]
             dy = e.p2.y - snap[id(e.p2)][1]
             e.c2.move_to(snap[id(e.c2)][0] + dx, snap[id(e.c2)][1] + dy)
-    # łuki przelicza kolejny enforce / scene_ok — tu zbędne przy każdym sync
 
 
 def continuity_satisfied(

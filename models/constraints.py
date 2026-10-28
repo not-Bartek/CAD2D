@@ -114,7 +114,6 @@ class ParallelConstraint(Constraint):
         return abs(cross) <= eps * la * lb
 
     def draw_icon(self, painter: QPainter) -> None:
-        """Symbol ∥ przy środku każdej z pary krawędzi."""
         painter.setPen(QPen(self.color, 1.5))
         painter.setFont(QFont("Sans Serif", 11, QFont.Weight.Bold))
         for p1, p2 in ((self.a1, self.a2), (self.b1, self.b2)):

@@ -9,7 +9,6 @@ def bernstein_to_power(
     p2: tuple[float, float],
     p3: tuple[float, float],
 ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]:
-    """B(t) = A0 + A1 t + A2 t² + A3 t³ (z formy Bernsteina)."""
     a0 = p0
     a1 = (3 * (p1[0] - p0[0]), 3 * (p1[1] - p0[1]))
     a2 = (
@@ -30,10 +29,6 @@ def cubic_forward_points(
     p3: tuple[float, float],
     steps: int = 64,
 ) -> list[tuple[float, float]]:
-    """
-    Przyrostowe wyznaczanie punktów krzywej sześciennej:
-    baza potęgowa - różnice skończone (forward differencing).
-    """
     if steps < 1:
         steps = 1
     a0, a1, a2, a3 = bernstein_to_power(p0, p1, p2, p3)

@@ -23,7 +23,6 @@ class Edge(ABC):
         self.width = width
         
     def has_point(self, point: Point) -> bool:
-        """Sprawdza, czy ta krawędź jest podpięta pod dany punkt."""
         return self.p1 is point or self.p2 is point
 
     def length(self) -> float:
@@ -94,7 +93,6 @@ class BezierEdge(Edge):
         )
 
     def draw(self, painter: QPainter, algorithm: LineAlgorithm = LineAlgorithm.LIBRARY):
-        # mniej próbek = płynniejszy paint; jakość nadal wystarczająca
         pts = self.sample_points(32)
         for i in range(len(pts) - 1):
             draw_segment(
@@ -122,11 +120,6 @@ class BezierEdge(Edge):
 
 
 class ArcEdge(Edge):
-    """
-    Łuk okręgu przez p1→p2.
-    Geometria: oba G0 → R = |p1p2|/2; jeden koniec G1 → styczna z sąsiada.
-    """
-
     def __init__(
         self,
         p1: Point,
@@ -151,7 +144,6 @@ class ArcEdge(Edge):
         return None
 
     def ensure_single_g1(self) -> None:
-        """Co najwyżej jeden koniec łuku ma G1 — drugi spada do G0."""
         if (
             self.p1.continuity == Continuity.G1
             and self.p2.continuity == Continuity.G1
@@ -160,10 +152,6 @@ class ArcEdge(Edge):
             self.p2.continuity_explicit = True
 
     def recompute(self, neighbor_tangent: tuple[float, float] | None = None) -> bool:
-        """
-        Przelicza (cx,cy,r,a0,a1).
-        neighbor_tangent — jednostkowa styczna na końcu z G1 (kierunek podróży).
-        """
         self.ensure_single_g1()
         p1 = (self.p1.x, self.p1.y)
         p2 = (self.p2.x, self.p2.y)

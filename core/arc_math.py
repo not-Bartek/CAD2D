@@ -36,10 +36,6 @@ def semicircle_geometry(
     p2: tuple[float, float],
     side: int = 1,
 ) -> tuple[float, float, float, float, float] | None:
-    """
-    Oba końce G0: R = |p1p2|/2 (półokrąg), środek w środku cięciwy.
-    side: +1 → CCW o π, -1 → CW o π.
-    """
     x1, y1 = p1
     x2, y2 = p2
     chord = math.hypot(x2 - x1, y2 - y1)
@@ -59,9 +55,6 @@ def arc_from_tangent(
     *,
     at_p1: bool,
 ) -> tuple[float, float, float, float, float] | None:
-    """
-    Łuk przez p1,p2 z jednostkową styczną na jednym końcu (kierunek podróży p1→p2).
-    """
     tx, ty = tangent_unit
     if at_p1:
         ax, ay = p1
@@ -86,7 +79,6 @@ def arc_from_tangent(
             continue
         cx, cy = ax + nx * r, ay + ny * r
         a0, a1 = _angles_p1_p2(cx, cy, p1, p2)
-        # sprawdź zgodność stycznej
         sweep = a1 - a0
         a = a0 if at_p1 else a1
         if sweep >= 0:

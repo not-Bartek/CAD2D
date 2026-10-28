@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QLabel,
     QPushButton,
+    QCheckBox,
 )
 from PyQt6.QtGui import QIcon, QImage, QPainter, QPainterPath, QPixmap, QKeySequence, QAction
 from PyQt6.QtCore import Qt, QRectF
@@ -74,6 +75,19 @@ class MainWindow(QMainWindow):
         group.addButton(self.radio_bresenham)
         bar.addWidget(self.radio_library)
         bar.addWidget(self.radio_bresenham)
+
+        restore_btn = QPushButton("Przywróć wszystkie krawędzie")
+        restore_btn.setToolTip(
+            "Przywraca wszystkie usunięte krawędzie (bez ograniczeń) "
+            "we wszystkich wielokątach"
+        )
+        bar.addWidget(restore_btn)
+
+        self.chk_bspline = QCheckBox("Narysuj krzywą B-spline")
+        self.chk_bspline_helpers = QCheckBox("Pokaż wierzchołki pomocnicze")
+        bar.addWidget(self.chk_bspline)
+        bar.addWidget(self.chk_bspline_helpers)
+
         bar.addStretch()
 
         help_btn = QPushButton("Dokumentacja")
@@ -88,6 +102,9 @@ class MainWindow(QMainWindow):
 
         self.radio_library.toggled.connect(self._on_algorithm_changed)
         self.radio_bresenham.toggled.connect(self._on_algorithm_changed)
+        restore_btn.clicked.connect(self.canvas.restore_all_edges)
+        self.chk_bspline.toggled.connect(self.canvas.set_show_bspline)
+        self.chk_bspline_helpers.toggled.connect(self.canvas.set_show_bspline_helpers)
 
         help_action = QAction("Dokumentacja", self)
         help_action.setShortcut(QKeySequence(Qt.Key.Key_F1))

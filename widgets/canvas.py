@@ -24,6 +24,8 @@ from models.continuity import (
 )
 from core.line_draw import LineAlgorithm, draw_segment
 from core.enums import Continuity
+from core.bspline_construct import build_cubic_bspline
+from core.bezier_math import cubic_forward_points
 
 
 def _id_to_color(pid: int) -> QColor:
@@ -53,10 +55,7 @@ class Canvas(QWidget):
         self._pick_map: dict[int, Point | Polygon | Edge] = {}
         self._pick_dirty = True
 
-        # zaznaczenie krawędzi jako pary punktów (stabilne po rebuild_edges)
         self.selected_edges: list[tuple[Point, Point]] = []
-
-        # pierwsza krawędź czekająca na drugą przy „Dodaj równoległość”
         self._parallel_from: tuple[Point, Point] | None = None
 
         self.constraints = ConstraintStore()
@@ -70,11 +69,29 @@ class Canvas(QWidget):
         self.line_algorithm = LineAlgorithm.LIBRARY
         self._dragging_control = False
 
+        self.show_bspline = False
+        self.show_bspline_helpers = False
+
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def set_line_algorithm(self, algorithm: LineAlgorithm) -> None:
         self.line_algorithm = algorithm
+        self.update()
+
+    def set_show_bspline(self, on: bool) -> None:
+        self.show_bspline = on
+        self.update()
+
+    def set_show_bspline_helpers(self, on: bool) -> None:
+        self.show_bspline_helpers = on
+        self.update()
+
+    def restore_all_edges(self) -> None:
+        for poly in self.polygons:
+            poly.restore_edge()
+        self.solver.propagate_repair(self.polygons)
+        self._pick_dirty = True
         self.update()
 
     def resizeEvent(self, event):
@@ -180,7 +197,6 @@ class Canvas(QWidget):
         next_id = 1
         seen: set[int] = set()
 
-        # 1. Wypełnienia wielokątów (najniższa warstwa)
         painter.setPen(Qt.PenStyle.NoPen)
         for poly in self.polygons:
             self._pick_map[next_id] = poly
@@ -188,7 +204,6 @@ class Canvas(QWidget):
             painter.drawPolygon(poly.to_qpolygonf())
             next_id += 1
 
-        # 2. Krawędzie (gruby „hit” pod prawy przycisk)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         for poly in self.polygons:
             for edge in poly.edges:
@@ -205,7 +220,6 @@ class Canvas(QWidget):
                     painter.drawLine(edge.p1.to_qpointf(), edge.p2.to_qpointf())
                 next_id += 1
 
-        # 3. Punkty kontrolne Béziera
         painter.setPen(Qt.PenStyle.NoPen)
         for poly in self.polygons:
             for edge in poly.edges:
@@ -218,7 +232,6 @@ class Canvas(QWidget):
                     painter.drawEllipse(cp.to_qpointf(), self.hit_radius, self.hit_radius)
                     next_id += 1
 
-        # 4. Wierzchołki na wierzchu
         for poly in self.polygons:
             for pt in poly.points:
                 if id(pt) in seen:
@@ -234,7 +247,6 @@ class Canvas(QWidget):
         self._pick_dirty = False
 
     def pick_at(self, x: float, y: float) -> Point | Polygon | Edge | None:
-        """Zwraca punkt, krawędź lub wielokąt pod współrzędnymi (przez color picking)."""
         if self._pick_dirty or self._pick_img is None:
             self._rebuild_pick_buffer()
         dpr = self.devicePixelRatioF()
@@ -245,14 +257,12 @@ class Canvas(QWidget):
         return self._pick_map.get(_color_to_id(self._pick_img.pixelColor(px, py)))
 
     def _polygon_for_point(self, point: Point) -> Polygon | None:
-        """Najwyższy wielokąt zawierający dany punkt (od końca listy)."""
         for poly in reversed(self.polygons):
             if any(p is point for p in poly.points):
                 return poly
         return None
 
     def _polygon_for_edge(self, edge: Edge) -> Polygon | None:
-        """Wielokąt, do którego należy dana krawędź."""
         for poly in reversed(self.polygons):
             if any(e is edge for e in poly.edges):
                 return poly
@@ -261,7 +271,6 @@ class Canvas(QWidget):
     def _update_hover_cursor(self, x: float, y: float):
         obj = self.pick_at(x, y)
         self.hovered_point = obj if isinstance(obj, Point) else None
-        # Ustawienie odpowiedniego kształtu kursora
         if isinstance(obj, Point):
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         elif isinstance(obj, Edge):
@@ -280,11 +289,6 @@ class Canvas(QWidget):
         origin: tuple[float, float],
         polys: list[Polygon] | None = None,
     ) -> None:
-        """
-        Sztywna translacja tylko własnego wielokąta.
-        Kierunki bez zmian ⇒ ∥ z innymi figurami zostaje; inne stoją.
-        restore + recompute łuków — bez stale _geom.
-        """
         restore_positions(self.polygons, snap)
         dx = tx - origin[0]
         dy = ty - origin[1]
@@ -326,10 +330,6 @@ class Canvas(QWidget):
         prefer_adjust: Point | None = None,
         interactive: bool = True,
     ) -> bool:
-        """
-        Ustaw pt pod (tx,ty), dograj ciągłości + ograniczenia.
-        True tylko gdy po przywróceniu kursora scena jest spójna.
-        """
         if self._drag_snap is None:
             return False
         snap = self._drag_snap
@@ -339,7 +339,6 @@ class Canvas(QWidget):
             sync_bezier_handles_from_snap(poly.edges, snap, pinned=pinned)
         pt.move_to(tx, ty)
 
-        # najpierw lokalna ciągłość przy przeciąganym elemencie
         for poly in self.polygons:
             if prefer_adjust is not None and (
                 any(p is prefer_adjust for p in poly.points)
@@ -376,7 +375,6 @@ class Canvas(QWidget):
         seeds: list[Point] | None = None,
         interactive: bool = True,
     ) -> None:
-        """Punkt pod kursorem + naprawa; translacja tylko gdy pełna naprawa się nie uda."""
         if self._drag_snap is None or self._drag_origin is None:
             return
         prefer = prefer_adjust or pt
@@ -403,11 +401,6 @@ class Canvas(QWidget):
         self._propagate_after_drag(self.dragged_point, tx, ty)
 
     def _drag_control_point(self, tx: float, ty: float, *, interactive: bool = True) -> None:
-        """
-        CP zawsze pod kursorem. Drugi uchwyt wolny (może dograć G1).
-        Najpierw lokalne naprawy (interactive, potem pełna); translacja dopiero
-        gdy żadna nie domyka ograniczeń+ciągłości — bez ich łamania.
-        """
         cp = self.dragged_point
         snap = self._drag_snap
         origin = self._drag_origin
@@ -447,7 +440,6 @@ class Canvas(QWidget):
                 ):
                     return
 
-        # ostateczność — sztywny ruch własnego wielokąta (∥ zachowane)
         self._translate_poly_of(cp, tx, ty, snap, origin)
 
     def _set_vertex_continuity(self, point: Point, continuity: Continuity) -> None:
@@ -602,6 +594,10 @@ class Canvas(QWidget):
             action_bezier.setChecked(isinstance(obj, BezierEdge))
             action_arc.setChecked(isinstance(obj, ArcEdge))
 
+            menu.addSeparator()
+            action_remove_edge = menu.addAction("Usuń krawędź (wielokąt otwarty)")
+            action_remove_edge.setEnabled(poly is not None and not poly.is_open())
+
             action_length = None
             action_parallel = None
             action_clear = None
@@ -655,6 +651,21 @@ class Canvas(QWidget):
                 self.solver.propagate_repair(self.polygons)
                 self._pick_dirty = True
                 self.update()
+            elif chosen == action_remove_edge and poly is not None:
+                if poly.remove_edge(obj):
+                    self.constraints.remove_for_edge(obj.p1, obj.p2)
+                    self.selected_edges = [
+                        (a, b)
+                        for a, b in self.selected_edges
+                        if not same_edge(a, b, obj.p1, obj.p2)
+                    ]
+                    if self._parallel_from is not None and same_edge(
+                        self._parallel_from[0], self._parallel_from[1], obj.p1, obj.p2
+                    ):
+                        self._parallel_from = None
+                    self.solver.propagate_repair(self.polygons)
+                    self._pick_dirty = True
+                    self.update()
             elif action_length is not None and chosen == action_length:
                 self._set_edge_length(obj)
             elif action_parallel is not None and chosen == action_parallel:
@@ -692,7 +703,7 @@ class Canvas(QWidget):
 
             if isinstance(obj, Polygon):
                 self.selected_edges.clear()
-                self.dragged_polygon = obj  # <-- Zapamiętujemy TEN konkretny poly
+                self.dragged_polygon = obj
                 self.last_mouse_pos = pos
                 self.setCursor(Qt.CursorShape.SizeAllCursor)
                 self.update()
@@ -704,7 +715,6 @@ class Canvas(QWidget):
     def mouseMoveEvent(self, event):
             pos = event.position()
 
-            # A. Przeciąganie punktu kontrolnego Béziera — CP zawsze za kursorem
             if (
                 self.dragged_point is not None
                 and self._dragging_control
@@ -715,7 +725,6 @@ class Canvas(QWidget):
                 self.update()
                 return
 
-            # B. Przeciąganie wierzchołka — lokalna naprawa; translacja tylko gdy się nie da
             if self.dragged_point is not None and self._drag_snap is not None and self._drag_origin is not None:
                 self._propagate_after_drag(
                     self.dragged_point, pos.x(), pos.y(), interactive=True
@@ -723,7 +732,6 @@ class Canvas(QWidget):
                 self.update()
                 return
 
-            # C. Przesuwanie całego wielokąta
             if self.dragged_polygon is not None and self.last_mouse_pos is not None:
                 dx = pos.x() - self.last_mouse_pos.x()
                 dy = pos.y() - self.last_mouse_pos.y()
@@ -735,13 +743,11 @@ class Canvas(QWidget):
             prev = self.hovered_point
             self._update_hover_cursor(pos.x(), pos.y())
 
-            # Jeśli stan najechania na punkt się zmienił, odświeżamy widok
             if self.hovered_point is not prev:
                 self.update()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            # dokładna naprawa raz na koniec przeciągania
             if (
                 self.dragged_point is not None
                 and self._drag_snap is not None
@@ -766,13 +772,9 @@ class Canvas(QWidget):
             self._update_hover_cursor(pos.x(), pos.y())
             self.update()
 
-    # --- PĘTLA RYSOWANIA ---
     def paintEvent(self, event):
         painter = QPainter(self)
-        # Wygładzanie krawędzi (antyaliasing)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
-        # Tło
         painter.fillRect(self.rect(), Qt.GlobalColor.white)
 
         if self.show_grid:
@@ -790,7 +792,6 @@ class Canvas(QWidget):
             for pt in polygon.points:
                 pt.draw(painter, radius=2.0, is_active=pt is self.dragged_point)
 
-        # podświetlenie zaznaczonych krawędzi / oczekującej na równoległość
         for poly in self.polygons:
             for edge in poly.edges:
                 color = None
@@ -814,6 +815,57 @@ class Canvas(QWidget):
                         color, width, self.line_algorithm,
                     )
 
-        # ikony aktywnych ograniczeń
         for constraint in self.constraints.items:
             constraint.draw_icon(painter)
+
+        if self.show_bspline:
+            self._draw_bsplines(painter)
+
+    def _draw_bsplines(self, painter: QPainter) -> None:
+        helper_color = QColor(140, 230, 120)
+        control_poly_pen = QPen(QColor(150, 150, 150), 1, Qt.PenStyle.DashLine)
+        hue_i = 0
+
+        for poly in self.polygons:
+            if len(poly.points) < 3:
+                continue
+            if poly.is_open() and len(poly.points) <= 3:
+                continue
+            vertices = [(p.x, p.y) for p in poly.ordered_path_points()]
+            construction = build_cubic_bspline(vertices, closed=not poly.is_open())
+
+            helper_points: list[tuple[float, float]] = []
+            seen: set[tuple[float, float]] = set()
+
+            for p0, c1, c2, p3 in construction.segments:
+                hue = 200 + (hue_i * 47) % 131
+                sat = 180 + ((hue_i // 131) * 37) % 76
+                val = 210 + ((hue_i // 131) * 19) % 46
+                hue_i += 1
+                seg_color = QColor.fromHsv(hue, sat, val)
+                pts = cubic_forward_points(p0, c1, c2, p3, 32)
+                for i in range(len(pts) - 1):
+                    draw_segment(
+                        painter,
+                        pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1],
+                        seg_color, 2.0, self.line_algorithm,
+                    )
+
+                if self.show_bspline_helpers:
+                    painter.setPen(control_poly_pen)
+                    painter.drawLine(QPointF(*p0), QPointF(*c1))
+                    painter.drawLine(QPointF(*c1), QPointF(*c2))
+                    painter.drawLine(QPointF(*c2), QPointF(*p3))
+
+                for p in (p0, c1, c2, p3):
+                    key = (round(p[0], 6), round(p[1], 6))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    helper_points.append(p)
+
+            if self.show_bspline_helpers:
+                painter.setPen(QPen(helper_color, 1))
+                painter.setBrush(QBrush(helper_color))
+                for hx, hy in helper_points:
+                    painter.drawEllipse(QPointF(hx, hy), 2.0, 2.0)

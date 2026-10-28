@@ -12,7 +12,6 @@ class LineAlgorithm(Enum):
 
 
 def bresenham_points(x0: int, y0: int, x1: int, y1: int):
-    """Klasyczny algorytm Bresenhama — generuje piksele odcinka."""
     dx = abs(x1 - x0)
     dy = abs(y1 - y0)
     sx = 1 if x0 < x1 else -1
@@ -50,7 +49,6 @@ def draw_segment(
 
     aa = painter.testRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-    # grubość: drawPoint respektuje szerokość peńa (wcześniej zawsze 1px)
     w = max(1, int(round(width)))
     painter.setPen(QPen(color, w))
     for x, y in bresenham_points(round(x0), round(y0), round(x1), round(y1)):

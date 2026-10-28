@@ -51,7 +51,6 @@ def _snapshot(polygons: list[Polygon]) -> dict[int, tuple[float, float]]:
 
 
 def _invalidate_arcs(polygons: list[Polygon]) -> None:
-    """Po restore współrzędnych stary _geom łuku nie przechodzi przez końce."""
     for poly in polygons:
         for e in poly.edges:
             if isinstance(e, ArcEdge):
@@ -127,7 +126,6 @@ def _align_edge(
     length: float,
     pinned: set[int],
 ) -> None:
-    """Ustawia krawędź w kierunku (ux,uy) z daną długością, nie ruszając pinów jeśli się da."""
     cur = _unit_dir(p1, p2)
     if cur is not None and cur[0] * ux + cur[1] * uy < 0:
         ux, uy = -ux, -uy
@@ -167,10 +165,6 @@ def _authority_edges_for_cp(
     polygons: list[Polygon],
     prefer_adjust: Point | None,
 ) -> set[frozenset[int]]:
-    """
-    Przy przeciąganiu CP: odcinek przyległy do końców związanego z tym CP
-    ma autorytet kierunku. ∥ dogrywa partnera, zamiast cofać tę krawędź.
-    """
     auth: set[frozenset[int]] = set()
     if prefer_adjust is None or not prefer_adjust.is_control:
         return auth
@@ -178,7 +172,6 @@ def _authority_edges_for_cp(
         owner = bezier_for_control(poly.edges, prefer_adjust)
         if owner is None:
             continue
-        # c1 ↔ p1, c2 ↔ p2 — tylko lokalny koniec, nie oba naraz (∥ góra∥dół)
         if prefer_adjust is owner.c1:
             ends = (owner.p1,)
         elif prefer_adjust is owner.c2:
@@ -213,13 +206,11 @@ def _fix_parallel(
     a_auth = ka in authority
     b_auth = kb in authority
 
-    # 1) krawędź z autorytetem ciągłości (np. po ruchu CP) = referencja
     if a_auth and not b_auth and sb >= 0:
         ref1, ref2, m1, m2 = pc.a1, pc.a2, pc.b1, pc.b2
     elif b_auth and not a_auth and sa >= 0:
         ref1, ref2, m1, m2 = pc.b1, pc.b2, pc.a1, pc.a2
     else:
-        # 2) więcej pinów = odniesienie; 3) inaczej wyższy dist = ruchoma
         pa = _edge_pin_count(pc.a1, pc.a2, pinned)
         pb = _edge_pin_count(pc.b1, pc.b2, pinned)
         if pa > pb and sb >= 0:
@@ -319,7 +310,6 @@ class ConstraintSolver:
     def scene_ok(self, polygons: list[Polygon]) -> bool:
         for poly in polygons:
             recompute_all_arcs(poly.edges)
-        # continuity_satisfied też woła recompute — pomijamy powtórkę
         return self.all_satisfied() and all(
             continuity_satisfied(poly.edges, recompute_arcs=False)
             for poly in polygons
@@ -443,11 +433,6 @@ class ConstraintSolver:
         prefer_adjust: Point | None = None,
         interactive: bool = False,
     ) -> bool:
-        """
-        Projekcja: ciągłości ↔ długości/∥.
-        interactive=True — krótka pętla pod przeciąganie myszą (płynność);
-        pełna naprawa przy interactive=False (menu / mouse-up).
-        """
         pinned = set(pinned or set())
         seed_pts = list(seeds or [])
         if not seed_pts:
@@ -457,7 +442,6 @@ class ConstraintSolver:
 
         outer = PROPAGATE_ITERS_INTERACTIVE if interactive else PROPAGATE_ITERS
         settle_cap = SETTLE_ITERS_INTERACTIVE if interactive else SETTLE_ITERS
-        # przy CP: odcinki przyległe mają autorytet kierunku (∥ idzie za ciągłością)
         authority = _authority_edges_for_cp(polygons, prefer_adjust)
 
         dirty: deque[Point] = deque(seed_pts)
@@ -535,12 +519,10 @@ class ConstraintSolver:
             if self.scene_ok(polygons):
                 return True
 
-            # 1) ciągłość ustawia kierunek przyległych odcinków (autorytet)
             before = _snapshot(polygons)
             apply_continuities()
             enqueue_moved(before)
 
-            # 2) ∥ / długości — partnerzy podążają za autorytetem, nie cofają go
             drain_dirty()
             before = _snapshot(polygons)
             self.settle_all(
@@ -549,7 +531,6 @@ class ConstraintSolver:
             for poly in polygons:
                 sync_bezier_handles_from_snap(poly.edges, before, pinned=pinned)
 
-            # 3) tylko uchwyty — wierzchołki (i kierunki odcinków) zostają
             apply_continuities(handles_only=True)
 
             if self.scene_ok(polygons):
@@ -646,11 +627,6 @@ class ConstraintSolver:
         *,
         interactive: bool = False,
     ) -> bool:
-        """
-        Ustaw point pod (tx,ty) bez łamania ograniczeń/ciągłości.
-        Translacja własnego wielokąta tylko gdy lokalna naprawa jest niemożliwa.
-        Zwraca True gdy scena jest spójna po operacji.
-        """
         _restore(polygons, drag_snap)
         dx = tx - origin[0]
         dy = ty - origin[1]
@@ -671,7 +647,6 @@ class ConstraintSolver:
         if self.scene_ok(polygons):
             return True
 
-        # krótka ścieżka mogła nie dojść — pełna naprawa zanim uznamy „nie da się”
         if interactive:
             _restore(polygons, drag_snap)
             point.move_to(tx, ty)
@@ -686,7 +661,6 @@ class ConstraintSolver:
             if self.scene_ok(polygons):
                 return True
 
-        # ostateczność: sztywna translacja własnego poly (kierunki ⇒ ∥ OK)
         _restore(polygons, drag_snap)
         moved: set[int] = set()
         for poly in polygons:
