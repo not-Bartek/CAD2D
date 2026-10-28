@@ -1,4 +1,4 @@
-# CAD 2D — Grafika Komputerowa, projekt 1
+# CAD 2D - Grafika Komputerowa, projekt 1
 
 Interaktywny edytor wielokątów 2D w **PyQt6**: odcinki, krzywe Béziera, łuki okręgu, ograniczenia geometryczne (długość, równoległość) oraz ciągłości G0 / G1 / C1. Po każdej zmianie scena jest dogrywana lokalnym solverem z **propagacją błędu**, tak aby ograniczenia i ciągłości nie wykluczały się nawzajem.
 
@@ -15,7 +15,7 @@ Interaktywny edytor wielokątów 2D w **PyQt6**: odcinki, krzywe Béziera, łuki
 7. [Ograniczenia geometryczne i solver](#7-ograniczenia-geometryczne-i-solver)
 8. [Ciągłości i krzywe](#8-ciągłości-i-krzywe)
 9. [Propagacja błędu (repair)](#9-propagacja-błędu-repair)
-10. [Decyzje projektowe — dlaczego tak](#10-decyzje-projektowe--dlaczego-tak)
+10. [Decyzje projektowe - dlaczego tak](#10-decyzje-projektowe--dlaczego-tak)
 11. [Złożoności obliczeniowe](#11-złożoności-obliczeniowe)
 12. [Skróty i interakcje](#12-skróty-i-interakcje)
 
@@ -38,7 +38,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-`requirements.txt` zawiera wyłącznie `PyQt6` — reszta to standardowa biblioteka Pythona.
+`requirements.txt` zawiera wyłącznie `PyQt6` - reszta to standardowa biblioteka Pythona.
 
 Ikona okna pochodzi z `logo.png` (zaokrąglana przy starcie w `main.py`).
 
@@ -88,10 +88,10 @@ Cel: solver i ciągłości da się testować / rozumieć bez widgetów; canvas t
 ### 3.1. `Point`
 
 ```text
-x, y                 — współrzędne zmiennoprzecinkowe
-is_control           — True dla uchwytów Béziera (c1, c2)
-continuity           — Continuity.G0 | G1 | C1
-continuity_explicit  — czy użytkownik ustawił ciągłość ręcznie
+x, y                 - współrzędne zmiennoprzecinkowe
+is_control           - True dla uchwytów Béziera (c1, c2)
+continuity           - Continuity.G0 | G1 | C1
+continuity_explicit  - czy użytkownik ustawił ciągłość ręcznie
 ```
 
 Ciągłość jest **na wierzchołku**, nie na krawędzi: przy wierzchołku z dwoma sąsiadami egzekwujemy zgodność stycznych obu krawędzi. Dla łuków: G1 na wierzchołku obowiązuje dla **wszystkich** incydentnych łuków; na jednym łuku może być G1 tylko na jednym końcu.
@@ -100,9 +100,9 @@ Ciągłość jest **na wierzchołku**, nie na krawędzi: przy wierzchołku z dwo
 
 ```text
 Edge (ABC)
-├── StraightEdge     — odcinek p1–p2
-├── BezierEdge       — sześcienna Béziera: p1, c1, c2, p2
-└── ArcEdge          — łuk okręgu przez p1→p2 (geometria wyliczana)
+├── StraightEdge     - odcinek p1-p2
+├── BezierEdge       - sześcienna Béziera: p1, c1, c2, p2
+└── ArcEdge          - łuk okręgu przez p1→p2 (geometria wyliczana)
 ```
 
 Wspólne API: `draw`, `length`, `control_points()`, `has_point`.
@@ -115,16 +115,16 @@ Wspólne API: `draw`, `length`, `control_points()`, `has_point`.
 |-------------|-----------|
 | oba G0 | półokrąg: środek = środek cięciwy, $R = L/2$ |
 | jeden koniec G1 | okrąg przez p1, p2 ze zadaną jednostkową styczną na końcu G1 |
-| oba G1 | niedozwolone — UI prosi o potwierdzenie i zdejmuje G1 z drugiego końca |
+| oba G1 | niedozwolone - UI prosi o potwierdzenie i zdejmuje G1 z drugiego końca |
 
 Na **Bézier** i **łuk** nie wolno zakładać długości ani równoległości; przy konwersji ograniczenia z tej krawędzi są usuwane.
 
 ### 3.3. `Polygon`
 
-- `points: list[Point]` — wierzchołki w kolejności obiegu
-- `edges: list[Edge]` — krawędź $i$ łączy `points[i]` z `points[(i+1) % n]`
-- `rebuild_edges()` — po dodaniu/usunięciu wierzchołka **zachowuje** istniejące `BezierEdge` / `ArcEdge` o tych samych końcach
-- `to_qpolygonf()` — obrys do wypełnienia i hit-testu: odcinki → wierzchołki, krzywe → próbki
+- `points: list[Point]` - wierzchołki w kolejności obiegu
+- `edges: list[Edge]` - krawędź $i$ łączy `points[i]` z `points[(i+1) % n]`
+- `rebuild_edges()` - po dodaniu/usunięciu wierzchołka **zachowuje** istniejące `BezierEdge` / `ArcEdge` o tych samych końcach
+- `to_qpolygonf()` - obrys do wypełnienia i hit-testu: odcinki → wierzchołki, krzywe → próbki
 
 ### 3.4. Ograniczenia (`constraints.py`)
 
@@ -141,8 +141,8 @@ ConstraintStore
 
 Spełnienie:
 
-- długość: $\lvert |p_1p_2| - L \rvert \le \varepsilon$
-- równoległość: $\lvert \vec{a}\times\vec{b} \rvert \le \varepsilon\,|\vec{a}|\,|\vec{b}|$ (iloczyn wektorowy w 2D)
+- długość: $\lvert \lvert p_{1}p_{2} \rvert - L \rvert \le \varepsilon$
+- równoległość: $\lvert \vec{a} \times \vec{b} \rvert \le \varepsilon\,\lvert\vec{a}\rvert\,\lvert\vec{b}\rvert$ (iloczyn wektorowy w 2D)
 
 ---
 
@@ -154,7 +154,7 @@ Główny widget: `widgets/canvas.py`. Dokumentacja w aplikacji: przycisk **Dokum
 
 Po uruchomieniu widać od razu:
 
-- 2 wielokąty (prostokąt + trójkąt) — nowy = wpis w `POLYGON_SPECS`
+- 2 wielokąty (prostokąt + trójkąt) - nowy = wpis w `POLYGON_SPECS`
 - krawędź Béziera (prawy bok prostokąta) z G1
 - łuk (lewy bok trójkąta), oba końce G0 ⇒ $R = L/2$
 - długość lewego boku prostokąta
@@ -176,32 +176,32 @@ Pasek w `main.py`: **Algorytm biblioteczny** vs **Bresenham** dla wszystkich odc
 
 ## 5. Algorytmy rysowania
 
-### 5.1. Odcinek — tryb biblioteczny
+### 5.1. Odcinek - tryb biblioteczny
 
-`QPainter.drawLine` — antyaliasing Qt. Złożoność po stronie biblioteki; z punktu widzenia aplikacji $O(1)$ wywołanie na segment.
+`QPainter.drawLine` - antyaliasing Qt. Złożoność po stronie biblioteki; z punktu widzenia aplikacji $O(1)$ wywołanie na segment.
 
 ### 5.2. Bresenham (`core/line_draw.py`)
 
 Klasyczny raster odcinka całkowitoliczbowego:
 
-1. $dx = |x_1-x_0|$, $dy = |y_1-y_0|$, kroki znakowe $sx, sy$
+1. $dx = \lvert x_{1}-x_{0} \rvert$, $dy = \lvert y_{1}-y_{0} \rvert$, kroki znakowe $sx$, $sy$
 2. $err = dx - dy$
 3. W pętli: zapal piksel; aktualizuj $err$ i współrzędne bez dzielenia / float
 
 Współrzędne zmiennoprzecinkowe są zaokrąglane (`round`) przed algorytmem. Antyaliasing jest tymczasowo wyłączany, żeby piksele były ostre.
 
-**Złożoność:** $O(N)$ gdzie $N \approx \max(dx, dy)$ — liczba zapalanych pikseli (liniowa względem długości rastra).
+**Złożoność:** $O(N)$ gdzie $N \approx \max(dx, dy)$ - liczba zapalanych pikseli (liniowa względem długości rastra).
 
-### 5.3. Sześcienna Béziera — forward differencing (`core/bezier_math.py`)
+### 5.3. Sześcienna Béziera - forward differencing (`core/bezier_math.py`)
 
-Cel: narysować $B(t)$, $t\in[0,1]$, bez wielokrotnego wyliczania Bernsteinów w każdym kroku.
+Cel: narysować $B(t)$, $t \in [0,1]$, bez wielokrotnego wyliczania Bernsteinów w każdym kroku.
 
 1. **Bernstein → baza potęgowa**  
-   $B(t) = A_0 + A_1 t + A_2 t^2 + A_3 t^3$ — współczynniki z punktów kontrolnych $P_0..P_3$ w $O(1)$.
+   $B(t) = A_{0} + A_{1} t + A_{2} t^{2} + A_{3} t^{3}$ - współczynniki z punktów kontrolnych $P_{0},\ldots,P_{3}$ w $O(1)$.
 
 2. **Forward differencing**  
    Przy kroku $h = 1/S$:
-   - początkowe różnice $\Delta, \Delta^2, \Delta^3$ z $A_i$ i $h$
+   - początkowe różnice $\Delta$, $\Delta^{2}$, $\Delta^{3}$ z $A_{i}$ i $h$
    - każdy kolejny punkt: kilka dodań (bez potęgowania $t$)
 
 **Złożoność:** $O(S)$ na krzywą przy $S$ krokach (domyślnie 64 przy rysowaniu, 48 przy fill/pick). Lepsze stałe niż naiwne $O(S)$ z pełnym Bernsteinem (mniej mnożeń).
@@ -210,19 +210,19 @@ Segmenty między próbkami idą przez `draw_segment` (library lub Bresenham).
 
 ### 5.4. Łuk okręgu (`core/arc_math.py` + `ArcEdge`)
 
-1. Wyznaczenie $(c_x, c_y, R, \alpha_0, \alpha_1)$
+1. Wyznaczenie $(c_{x}, c_{y}, R, \alpha_{0}, \alpha_{1})$
 2. Próbkowanie kątowe: $S+1$ punktów na łuku
 3. Rysowanie jako łańcuch odcinków
 
 **Półokrąg (oba G0):** $R = L/2$, środek w środku cięciwy, sweep $\pm\pi$.
 
-**G1 na jednym końcu:** środek leży na prostej $P + R\cdot n$, gdzie $n \perp \hat{t}$ (dwa sensy obrotu). Z warunku $|C-Q|=R$ wynika
+**G1 na jednym końcu:** środek leży na prostej $P + R \cdot n$, gdzie $n \perp \hat{t}$ (dwa sensy obrotu). Z warunku $\lvert C-Q \rvert = R$ wynika
 
 $$
-R = -\frac{|P-Q|^2}{2\, n\cdot(P-Q)}
+R = -\frac{\lvert P-Q \rvert^{2}}{2 n \cdot (P-Q)}
 $$
 
-(dla $R>0$). Wybierany jest wariant ze zdaną zgodnością stycznej i mniejszym $|\mathrm{sweep}|$.
+(dla $R>0$). Wybierany jest wariant ze zdaną zgodnością stycznej i mniejszym $\lvert \mathrm{sweep} \rvert$.
 
 **Złożoność:** geometria $O(1)$; próbki $O(S)$.
 
@@ -233,15 +233,15 @@ $$
 Zamiast ręcznego testowania odległości do każdej krawędzi/punktu canvas buduje **offscreenowy obraz ID** (`_rebuild_pick_buffer`):
 
 1. Czarne tło
-2. Wypełnienia wielokątów — unikalny kolor RGB kodujący ID obiektu
-3. Krawędzie grubym piórem (`hit_radius * 2`) — Bézier/łuk jako polyline próbek
-4. Punkty kontrolne i wierzchołki — elipsy/kwadraty
+2. Wypełnienia wielokątów - unikalny kolor RGB kodujący ID obiektu
+3. Krawędzie grubym piórem (`hit_radius * 2`) - Bézier/łuk jako polyline próbek
+4. Punkty kontrolne i wierzchołki - elipsy/kwadraty
 
 Odczyt: `pick_at(x,y)` → kolor piksela → `_pick_map[id]`. Bufor jest dirty po geometrii / resize.
 
 **Dlaczego tak:** stały koszt zapytania $O(1)$ po zbudowaniu bufora; naturalna „grubość” picka dla krzywych; ten sam kształt co fill (próbkowany obrys).
 
-**Złożoność przebudowy:** $O(P + E\cdot S + V)$ rysowania do obrazu rozmiaru $W\times H$ (koszt fill/stroke Qt), gdzie $P$ — wielokąty, $E$ — krawędzie, $S$ — próbki, $V$ — wierzchołki/CP. Zapytanie: $O(1)$.
+**Złożoność przebudowy:** $O(P + E \cdot S + V)$ rysowania do obrazu rozmiaru $W \times H$ (koszt fill/stroke Qt), gdzie $P$ - wielokąty, $E$ - krawędzie, $S$ - próbki, $V$ - wierzchołki/CP. Zapytanie: $O(1)$.
 
 ---
 
@@ -253,12 +253,12 @@ Plik: `models/solver.py`. Solver jest **lokalny / iteracyjny** (projekcja na ogr
 
 Wierzchołki (i uchwyty Béziera) połączone krawędziami ograniczeń oraz topologią wielokąta tworzą graf. BFS od seeda (przeciągany punkt) daje `dist[id]`. Przy naprawie **rusza się strona dalej od seeda** (wyższy score), żeby zaburzenie lokalne nie cofało kursora.
 
-**Złożoność BFS:** $O(V_g + E_g)$ w komponencie związanej z ograniczeniami / topologią.
+**Złożoność BFS:** $O(V_{g} + E_{g})$ w komponencie związanej z ograniczeniami / topologią.
 
 ### 7.2. Naprawa długości
 
-- Z pinnowanym końcem: rzut drugiego punktu na okrąg o środku w anchorze (`_place_at_length`) — $O(1)$.
-- Bez pinów: skalowanie względem środka krawędzi (`_scale_edge_from_mid`) — $O(1)$.
+- Z pinnowanym końcem: rzut drugiego punktu na okrąg o środku w anchorze (`_place_at_length`) - $O(1)$.
+- Bez pinów: skalowanie względem środka krawędzi (`_scale_edge_from_mid`) - $O(1)$.
 
 ### 7.3. Naprawa równoległości
 
@@ -278,15 +278,15 @@ Do `SETTLE_ITERS` (800) razy:
 - napraw wszystkie niespełnione długości
 - przerwij gdy błąd $\le \varepsilon$
 
-To Gauss–Seidelowska projekcja na zbiory ograniczeń.
+To Gauss-Seidelowska projekcja na zbiory ograniczeń.
 
-**Złożoność:** $O(I_s \cdot (L + P))$ gdzie $L$ — liczba długości, $P$ — równoległości, $I_s \le 800$. W praktyce zwykle dużo mniej iteracji.
+**Złożoność:** $O(I_{s} \cdot (L + P))$ gdzie $L$ - liczba długości, $P$ - równoległości, $I_{s} \le 800$. W praktyce zwykle dużo mniej iteracji.
 
 ### 7.5. `_propagate_from_fixed`
 
-Szybka ścieżka przy drag: gdy punkt jest „sztywno” związany łańcuchem długości, domykamy kolejne końce jak w constraint propagation na drzewie długości. Jeśli równoległości w komponencie się wywrócą — fail → fallback do `settle_with_pinned` lub translacji całego poly.
+Szybka ścieżka przy drag: gdy punkt jest „sztywno” związany łańcuchem długości, domykamy kolejne końce jak w constraint propagation na drzewie długości. Jeśli równoległości w komponencie się wywrócą - fail → fallback do `settle_with_pinned` lub translacji całego poly.
 
-**Złożoność:** $O(L \cdot V')$ w najgorszym przypadku pętli (typowo blisko $O(L)$).
+**Złożoność:** $O(L \cdot V^{\prime})$ w najgorszym przypadku pętli (typowo blisko $O(L)$).
 
 ### 7.6. `move_point_or_translate` (drag wierzchołka)
 
@@ -310,17 +310,17 @@ Plik: `models/continuity.py`.
 
 ### 8.1. Definicje
 
-| Klasa | Warunek na stycznych $\mathbf{t}_\mathrm{in}, \mathbf{t}_\mathrm{out}$ |
+| Klasa | Warunek na stycznych $\mathbf{t}_{\mathrm{in}}, \mathbf{t}_{\mathrm{out}}$ |
 |-------|--------------------------------------------------------------------------|
 | **G0** | wspólny wierzchołek (zawsze przy spójnej topologii) |
-| **G1** | $\hat{t}_\mathrm{in} = \hat{t}_\mathrm{out}$ (kierunek jednostkowy) |
-| **C1** | $\mathbf{t}_\mathrm{in} = \mathbf{t}_\mathrm{out}$ (wektor, także długość) — praktycznie tylko przy Bézierze |
+| **G1** | $\hat{t}_{\mathrm{in}} = \hat{t}_{\mathrm{out}}$ (kierunek jednostkowy) |
+| **C1** | $\mathbf{t}_{\mathrm{in}} = \mathbf{t}_{\mathrm{out}}$ (wektor, także długość) - praktycznie tylko przy Bézierze |
 
 Styczne:
 
 - odcinek: wektor wzdłuż krawędzi
-- Bézier: $3(P_1-P_0)$ / $3(P_3-P_2)$ (pochodna w końcu)
-- łuk: $\pm(-\sin\alpha,\cos\alpha)$ zależnie od znaku sweep
+- Bézier: $3(P_{1}-P_{0})$ / $3(P_{3}-P_{2})$ (pochodna w końcu)
+- łuk: $\pm(-\sin\alpha, \cos\alpha)$ zależnie od znaku sweep
 
 ### 8.2. Egzekwowanie przy Bézierze
 
@@ -328,33 +328,33 @@ Preferencja: **najpierw uchwyty**, potem daleki wierzchołek odcinka (`dist` / `
 
 ### 8.3. Egzekwowanie przy łuku
 
-Łuk z G1 jest **zdeterminowany** przez styczną sąsiada na końcu G1 — `recompute_all_arcs` przelicza $R$ i środek. Nie ma wolnego uchwytu; „naprawa łuku” = ponowne wyliczenie geometrii. G1 na wierzchołku dotyczy wszystkich incydentnych łuków; drugi koniec każdego z tych łuków musi być G0 (dialog przy konflikcie).
+Łuk z G1 jest **zdeterminowany** przez styczną sąsiada na końcu G1 - `recompute_all_arcs` przelicza $R$ i środek. Nie ma wolnego uchwytu; „naprawa łuku” = ponowne wyliczenie geometrii. G1 na wierzchołku dotyczy wszystkich incydentnych łuków; drugi koniec każdego z tych łuków musi być G0 (dialog przy konflikcie).
 
 ### 8.4. `sync_bezier_handles_from_snap`
 
-Po ruchu końców: $\Delta = P_\mathrm{now} - P_\mathrm{snap}$, uchwyt $C \leftarrow C_\mathrm{snap} + \Delta$, z pominięciem `pinned` (przeciągany CP nie jest nadpisywany).
+Po ruchu końców: $\Delta = P_{\mathrm{now}} - P_{\mathrm{snap}}$, uchwyt $C \leftarrow C_{\mathrm{snap}} + \Delta$, z pominięciem `pinned` (przeciągany CP nie jest nadpisywany).
 
 ---
 
 ## 9. Propagacja błędu (repair)
 
-`ConstraintSolver.propagate_repair` — wspólna pętla, żeby **równoległość nie psuła Béziera/łuku i odwrotnie**.
+`ConstraintSolver.propagate_repair` - wspólna pętla, żeby **równoległość nie psuła Béziera/łuku i odwrotnie**.
 
 Jedna iteracja (do `PROPAGATE_ITERS = 64`):
 
 1. **Ciągłości** (ew. z `prefer_adjust` = przeciągany punkt/CP)
-2. **Kolejka dirty** — napraw długości/∥ wokół ruszonych punktów (`drain_dirty`)
+2. **Kolejka dirty** - napraw długości/∥ wokół ruszonych punktów (`drain_dirty`)
 3. **`settle_all`** + sync uchwytów
 4. Ponownie ciągłości
 5. Ponownie settle + sync
-6. Ciągłości **tylko na uchwytach** (`handles_only`: wierzchołki zamrożone) — ∥ na odcinkach zostaje
+6. Ciągłości **tylko na uchwytach** (`handles_only`: wierzchołki zamrożone) - ∥ na odcinkach zostaje
 
 Potem ponowne zakolejkowanie niespełnionych ograniczeń / wierzchołków z krzywymi.
 
 ### Drag CP Béziera (lokalnie)
 
 - Pin: CP + `p1` + `p2` segmentu (ruch **względem końców**)
-- `allow_translate=False` — bez sztywnego przesuwania całego wielokąta
+- `allow_translate=False` - bez sztywnego przesuwania całego wielokąta
 - Ciągłość G1/C1 obraca/przesuwa przyległe odcinki; równoległość dogrywa **partnera** pary (scoring pinów preferuje krawędź przy końcu Béziera jako referencję)
 
 ### Drag wierzchołka
@@ -365,7 +365,7 @@ Potem ponowne zakolejkowanie niespełnionych ograniczeń / wierzchołków z krzy
 
 ---
 
-## 10. Decyzje projektowe — dlaczego tak
+## 10. Decyzje projektowe - dlaczego tak
 
 | Decyzja | Uzasadnienie |
 |---------|----------------|
@@ -390,33 +390,33 @@ Oznaczenia (typowy stan sceny):
 |--------|-----------|
 | $V$ | wierzchołki (+ uchwyty Béziera jako punkty) |
 | $E$ | krawędzie |
-| $L, P$ | ograniczenia długości / równoległości |
-| $S$ | liczba próbek krzywej (≈ 32–64) |
-| $W\times H$ | rozmiar pick buffera |
-| $I_s, I_p$ | limity iteracji settle / propagate (800 / 64) |
+| $L$, $P$ | ograniczenia długości / równoległości |
+| $S$ | liczba próbek krzywej (ok. 32-64) |
+| $W \times H$ | rozmiar pick buffera |
+| $I_{s}$, $I_{p}$ | limity iteracji settle / propagate (800 / 64) |
 | $N$ | piksele odcinka Bresenhama |
 
 | Operacja | Złożoność | Uwagi |
 |----------|-----------|--------|
-| Bresenham 1 odcinek | $O(N)$ | $N\sim$ długość rastra |
+| Bresenham 1 odcinek | $O(N)$ | $N$ rzędu długości rastra |
 | Bernstein→power | $O(1)$ | |
 | Forward diff. Béziera | $O(S)$ | |
 | Próbki łuku | $O(S)$ | geometria $O(1)$ |
-| Rysowanie sceny | $O(E\cdot S + V)$ | plus koszt Qt |
-| Rebuild pick buffer | $O(E\cdot S + V + WH)$ | dominantnie fill |
+| Rysowanie sceny | $O(E \cdot S + V)$ | plus koszt Qt |
+| Rebuild pick buffer | $O(E \cdot S + V + WH)$ | dominantnie fill |
 | `pick_at` | $O(1)$ | |
 | BFS `dist` | $O(V+E+L+P)$ | |
 | Jedna naprawa length/∥ | $O(1)$ | |
-| `settle_all` | $O(I_s(L+P))$ | early exit |
-| `_propagate_from_fixed` | $O(L\cdot V)$ worst | zwykle ≪ |
+| `settle_all` | $O(I_{s}(L+P))$ | early exit |
+| `_propagate_from_fixed` | $O(L \cdot V)$ worst | zwykle dużo mniej |
 | `recompute_all_arcs` | $O(E)$ | |
 | `enforce_all_continuities` | $O(V)$ + recompute łuków | |
-| `propagate_repair` (1 iter) | $O(V + I_s(L+P) + E)$ | |
-| `propagate_repair` (max) | $O(I_p\cdot(\ldots))$ | często 1–kilka iteracji |
+| `propagate_repair` (1 iter) | $O(V + I_{s}(L+P) + E)$ | |
+| `propagate_repair` (max) | $O(I_{p} \cdot (\dots))$ | często 1-kilka iteracji |
 | Drag frame (wierzchołek) | jak move + propagate | interakcja ~ms na małych scenach |
 | Drag frame (CP) | propagate, bez translate poly | końce Béziera pinned |
 
-Dla scen ćwiczeniowych (kilka wielokątów, $V \lesssim 30$) wszystkie ścieżki są praktycznie **liniowe względem rozmiaru lokalnego grafu ograniczeń**, z małymi stałymi limitami iteracji jako bezpiecznikiem.
+Dla scen ćwiczeniowych (kilka wielokątów, $V \le 30$) wszystkie ścieżki są praktycznie **liniowe względem rozmiaru lokalnego grafu ograniczeń**, z małymi stałymi limitami iteracji jako bezpiecznikiem.
 
 ---
 
@@ -424,17 +424,17 @@ Dla scen ćwiczeniowych (kilka wielokątów, $V \lesssim 30$) wszystkie ścieżk
 
 ### Klawiatura
 
-- **G** — siatka (10 px / 100 px)
-- **Esc** — anuluj oczekującą równoległość
-- **F1** / przycisk **Dokumentacja** — instrukcja, założenia, model, algorytmy + podgląd `readme.md`
+- **G** - siatka (10 px / 100 px)
+- **Esc** - anuluj oczekującą równoległość
+- **F1** / przycisk **Dokumentacja** - instrukcja, założenia, model, algorytmy + podgląd `readme.md`
 
-### Menu krawędzi — typ krzywej
+### Menu krawędzi - typ krzywej
 
 - Odcinek
 - Krzywa Béziera (usuwa ograniczenia z krawędzi; domyślnie G1 jeśli niejawne)
 - Łuk okręgu (usuwa ograniczenia; domyślnie G0 / $R=L/2$)
 
-### Menu wierzchołka — ciągłość
+### Menu wierzchołka - ciągłość
 
 - Przy sąsiedztwie krzywej: G0, G1; **C1** tylko gdy jest sąsiad Béziera
 - Konflikt G1 na drugim końcu łuku → dialog potwierdzenia
@@ -461,4 +461,4 @@ Dla scen ćwiczeniowych (kilka wielokątów, $V \lesssim 30$) wszystkie ścieżk
 
 ---
 
-*Projekt zaliczeniowy z grafiki komputerowej — edytor CAD 2D z ograniczeniami i krzywymi.*
+*Projekt zaliczeniowy z grafiki komputerowej - edytor CAD 2D z ograniczeniami i krzywymi.*

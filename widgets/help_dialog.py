@@ -141,6 +141,8 @@ def _pretty_tex(src: str) -> str:
         (r"\perp", "⊥"),
         (r"\sim", "~"),
         (r"\ldots", "..."),
+        (r"\dots", "..."),
+        (r"\prime", "'"),
         (r"\lvert", "|"),
         (r"\rvert", "|"),
         (r"\,", " "),
