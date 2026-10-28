@@ -32,7 +32,7 @@ def cubic_forward_points(
 ) -> list[tuple[float, float]]:
     """
     Przyrostowe wyznaczanie punktów krzywej sześciennej:
-    baza potęgowa → różnice skończone (forward differencing).
+    baza potęgowa - różnice skończone (forward differencing).
     """
     if steps < 1:
         steps = 1

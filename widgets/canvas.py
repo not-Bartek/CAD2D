@@ -19,6 +19,8 @@ from models.continuity import (
     clear_other_arc_g1,
     arc_g1_conflicts,
     incident_arcs,
+    enforce_after_move,
+    recompute_all_arcs,
 )
 from core.line_draw import LineAlgorithm, draw_segment
 from core.enums import Continuity
@@ -278,17 +280,25 @@ class Canvas(QWidget):
         origin: tuple[float, float],
         polys: list[Polygon] | None = None,
     ) -> None:
+        """
+        Sztywna translacja tylko własnego wielokąta.
+        Kierunki bez zmian ⇒ ∥ z innymi figurami zostaje; inne stoją.
+        restore + recompute łuków — bez stale _geom.
+        """
         restore_positions(self.polygons, snap)
         dx = tx - origin[0]
         dy = ty - origin[1]
-        targets = polys if polys is not None else self.polygons
+        if polys is not None:
+            targets = polys
+        else:
+            targets = [
+                poly
+                for poly in self.polygons
+                if any(p is pt for p in poly.points)
+                or any(pt is cp for e in poly.edges for cp in e.control_points())
+            ]
         moved: set[int] = set()
         for poly in targets:
-            if not (
-                any(p is pt for p in poly.points)
-                or any(pt is cp for e in poly.edges for cp in e.control_points())
-            ):
-                continue
             for p in poly.points:
                 if id(p) in moved:
                     continue
@@ -303,6 +313,56 @@ class Canvas(QWidget):
                     ox, oy = snap[id(p)]
                     p.move_to(ox + dx, oy + dy)
         pt.move_to(tx, ty)
+        for poly in self.polygons:
+            recompute_all_arcs(poly.edges)
+
+    def _try_repair_at(
+        self,
+        pt: Point,
+        tx: float,
+        ty: float,
+        *,
+        pinned_extra: set[int] | None = None,
+        prefer_adjust: Point | None = None,
+        interactive: bool = True,
+    ) -> bool:
+        """
+        Ustaw pt pod (tx,ty), dograj ciągłości + ograniczenia.
+        True tylko gdy po przywróceniu kursora scena jest spójna.
+        """
+        if self._drag_snap is None:
+            return False
+        snap = self._drag_snap
+        pinned = {id(pt)} | set(pinned_extra or set())
+        pt.move_to(tx, ty)
+        for poly in self.polygons:
+            sync_bezier_handles_from_snap(poly.edges, snap, pinned=pinned)
+        pt.move_to(tx, ty)
+
+        # najpierw lokalna ciągłość przy przeciąganym elemencie
+        for poly in self.polygons:
+            if prefer_adjust is not None and (
+                any(p is prefer_adjust for p in poly.points)
+                or any(
+                    prefer_adjust is h
+                    for e in poly.edges
+                    for h in e.control_points()
+                )
+            ):
+                enforce_after_move(
+                    poly.edges, prefer_adjust, pinned=pinned
+                )
+        pt.move_to(tx, ty)
+
+        self.solver.propagate_repair(
+            self.polygons,
+            pinned=pinned,
+            seeds=[pt],
+            prefer_adjust=prefer_adjust or pt,
+            interactive=interactive,
+        )
+        pt.move_to(tx, ty)
+        return self.solver.scene_ok(self.polygons)
 
     def _propagate_after_drag(
         self,
@@ -316,45 +376,37 @@ class Canvas(QWidget):
         seeds: list[Point] | None = None,
         interactive: bool = True,
     ) -> None:
-        """
-        Punkt pod kursorem + propagacja błędu: ∥ / długości ↔ ciągłości.
-        interactive=True podczas ruchu myszy (szybko); False na mouse-up (dokładniej).
-        """
+        """Punkt pod kursorem + naprawa; translacja tylko gdy pełna naprawa się nie uda."""
         if self._drag_snap is None or self._drag_origin is None:
             return
-        snap = self._drag_snap
-        origin = self._drag_origin
-        pinned = {id(pt)} | set(pinned_extra or set())
-        pt.move_to(tx, ty)
-        for poly in self.polygons:
-            sync_bezier_handles_from_snap(poly.edges, snap, pinned=pinned)
-        pt.move_to(tx, ty)
-
-        seed_list = list(seeds) if seeds is not None else [pt]
-        ok = self.solver.propagate_repair(
-            self.polygons,
-            pinned=pinned,
-            seeds=seed_list,
-            prefer_adjust=prefer_adjust or pt,
-            interactive=interactive,
-        )
-        pt.move_to(tx, ty)
-        if ok:
-            return
-
+        prefer = prefer_adjust or pt
+        extras = [set(pinned_extra or set())]
+        modes = [True, False] if interactive else [False]
+        for mode in modes:
+            for extra in extras:
+                restore_positions(self.polygons, self._drag_snap)
+                if self._try_repair_at(
+                    pt,
+                    tx,
+                    ty,
+                    pinned_extra=extra,
+                    prefer_adjust=prefer,
+                    interactive=mode,
+                ):
+                    return
         if allow_translate:
-            self._translate_poly_of(pt, tx, ty, snap, origin)
+            self._translate_poly_of(pt, tx, ty, self._drag_snap, self._drag_origin)
 
     def _apply_continuity_after_vertex_drag(self, tx: float, ty: float) -> None:
         if self.dragged_point is None:
             return
         self._propagate_after_drag(self.dragged_point, tx, ty)
 
-    def _drag_control_point(self, tx: float, ty: float) -> None:
+    def _drag_control_point(self, tx: float, ty: float, *, interactive: bool = True) -> None:
         """
-        CP pod kursorem, ruch względem końców segmentu (p1/p2 zostają).
-        Ciągłość dogrywa krawędzie przyległe (+ ich ∥/długości) — lokalnie, bez
-        translacji całego wielokąta.
+        CP zawsze pod kursorem. Drugi uchwyt wolny (może dograć G1).
+        Najpierw lokalne naprawy (interactive, potem pełna); translacja dopiero
+        gdy żadna nie domyka ograniczeń+ciągłości — bez ich łamania.
         """
         cp = self.dragged_point
         snap = self._drag_snap
@@ -362,31 +414,41 @@ class Canvas(QWidget):
         if cp is None or snap is None or origin is None:
             return
 
-        restore_positions(self.polygons, snap)
-
         owner: BezierEdge | None = None
         for poly in self.polygons:
             owner = bezier_for_control(poly.edges, cp)
             if owner is not None:
                 break
 
-        pinned_extra: set[int] = set()
+        ends: set[int] = set()
+        near_end: set[int] = set()
         if owner is not None:
-            # końce Béziera nieruchome — CP rusza się względem nich;
-            # ciągłość / ∥ dogrywają krawędzie przyległe (nie cały poly)
-            pinned_extra.add(id(owner.p1))
-            pinned_extra.add(id(owner.p2))
+            ends = {id(owner.p1), id(owner.p2)}
+            if cp is owner.c1:
+                near_end = {id(owner.p1)}
+            elif cp is owner.c2:
+                near_end = {id(owner.p2)}
+            else:
+                near_end = set(ends)
 
-        self._propagate_after_drag(
-            cp,
-            tx,
-            ty,
-            prefer_adjust=cp,
-            pinned_extra=pinned_extra,
-            allow_translate=False,
-            seeds=[cp],
-        )
-        cp.move_to(tx, ty)
+        pin_levels: list[set[int]] = []
+        for extra in (ends, near_end, set()):
+            key = frozenset(extra)
+            if any(frozenset(e) == key for e in pin_levels):
+                continue
+            pin_levels.append(extra)
+
+        modes = [True, False] if interactive else [False]
+        for mode in modes:
+            for extra in pin_levels:
+                restore_positions(self.polygons, snap)
+                if self._try_repair_at(
+                    cp, tx, ty, pinned_extra=extra, prefer_adjust=cp, interactive=mode
+                ):
+                    return
+
+        # ostateczność — sztywny ruch własnego wielokąta (∥ zachowane)
+        self._translate_poly_of(cp, tx, ty, snap, origin)
 
     def _set_vertex_continuity(self, point: Point, continuity: Continuity) -> None:
         if point.continuity == continuity and point.continuity_explicit:
@@ -653,17 +715,11 @@ class Canvas(QWidget):
                 self.update()
                 return
 
-            # B. Przeciąganie wierzchołka (lekka naprawa w trakcie; pełna na mouse-up)
+            # B. Przeciąganie wierzchołka — lokalna naprawa; translacja tylko gdy się nie da
             if self.dragged_point is not None and self._drag_snap is not None and self._drag_origin is not None:
-                self.solver.move_point_or_translate(
-                    self.dragged_point,
-                    pos.x(),
-                    pos.y(),
-                    self.polygons,
-                    self._drag_snap,
-                    self._drag_origin,
+                self._propagate_after_drag(
+                    self.dragged_point, pos.x(), pos.y(), interactive=True
                 )
-                self._apply_continuity_after_vertex_drag(pos.x(), pos.y())
                 self.update()
                 return
 
@@ -685,7 +741,7 @@ class Canvas(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            # dokładna naprawa raz na koniec przeciągania (nie w każdym mouseMove)
+            # dokładna naprawa raz na koniec przeciągania
             if (
                 self.dragged_point is not None
                 and self._drag_snap is not None
@@ -694,25 +750,7 @@ class Canvas(QWidget):
                 pt = self.dragged_point
                 tx, ty = pt.x, pt.y
                 if self._dragging_control:
-                    owner = None
-                    pinned_extra: set[int] = set()
-                    for poly in self.polygons:
-                        owner = bezier_for_control(poly.edges, pt)
-                        if owner is not None:
-                            pinned_extra.add(id(owner.p1))
-                            pinned_extra.add(id(owner.p2))
-                            break
-                    self._propagate_after_drag(
-                        pt,
-                        tx,
-                        ty,
-                        prefer_adjust=pt,
-                        pinned_extra=pinned_extra,
-                        allow_translate=False,
-                        seeds=[pt],
-                        interactive=False,
-                    )
-                    pt.move_to(tx, ty)
+                    self._drag_control_point(tx, ty, interactive=False)
                 else:
                     self._propagate_after_drag(pt, tx, ty, interactive=False)
 

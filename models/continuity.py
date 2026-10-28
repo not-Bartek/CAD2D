@@ -273,10 +273,28 @@ def enforce_continuity_at(
 
     prefer_out = True
     if prefer_adjust is not None:
-        if out_bezier and (prefer_adjust is outgoing.c1 or prefer_adjust is outgoing.c2):
+        # lokalny uchwyt przy tym wierzchołku = autorytet krzywej
+        local_out = out_bezier and (
+            (prefer_adjust is outgoing.c1 and outgoing.p1 is vertex)
+            or (prefer_adjust is outgoing.c2 and outgoing.p2 is vertex)
+        )
+        local_in = in_bezier and (
+            (prefer_adjust is incoming.c1 and incoming.p1 is vertex)
+            or (prefer_adjust is incoming.c2 and incoming.p2 is vertex)
+        )
+        if local_out:
             prefer_out = False
-        elif in_bezier and (prefer_adjust is incoming.c1 or prefer_adjust is incoming.c2):
+        elif local_in:
             prefer_out = True
+        elif out_bezier and (
+            prefer_adjust is outgoing.c1 or prefer_adjust is outgoing.c2
+        ):
+            # przeciągany jest daleki uchwyt — dograj lokalny (sibling) do sąsiada
+            prefer_out = True
+        elif in_bezier and (
+            prefer_adjust is incoming.c1 or prefer_adjust is incoming.c2
+        ):
+            prefer_out = False
     elif out_arc and not in_arc:
         prefer_out = False
     elif in_arc and not out_arc:

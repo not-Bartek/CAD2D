@@ -50,7 +50,9 @@ def draw_segment(
 
     aa = painter.testRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-    painter.setPen(QPen(color, 1))
+    # grubość: drawPoint respektuje szerokość peńa (wcześniej zawsze 1px)
+    w = max(1, int(round(width)))
+    painter.setPen(QPen(color, w))
     for x, y in bresenham_points(round(x0), round(y0), round(x1), round(y1)):
         painter.drawPoint(x, y)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, aa)

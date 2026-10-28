@@ -19,15 +19,17 @@ from models.continuity import (
     continuity_satisfied,
     vertex_has_curve_neighbor,
     recompute_all_arcs,
+    bezier_for_control,
+    adjacent_edges,
 )
-from models.edges import BezierEdge
+from models.edges import ArcEdge, BezierEdge, StraightEdge
 
 
 EPS = 1e-3
-SETTLE_ITERS = 120          # pełna naprawa (menu / mouse-up)
-SETTLE_ITERS_INTERACTIVE = 24  # podczas przeciągania
+SETTLE_ITERS = 120
+SETTLE_ITERS_INTERACTIVE = 32
 PROPAGATE_ITERS = 16
-PROPAGATE_ITERS_INTERACTIVE = 3
+PROPAGATE_ITERS_INTERACTIVE = 6
 
 
 def _all_points(polygons: list[Polygon]):
@@ -48,11 +50,25 @@ def _snapshot(polygons: list[Polygon]) -> dict[int, tuple[float, float]]:
     return {id(p): (p.x, p.y) for p in _all_points(polygons)}
 
 
+def _invalidate_arcs(polygons: list[Polygon]) -> None:
+    """Po restore współrzędnych stary _geom łuku nie przechodzi przez końce."""
+    for poly in polygons:
+        for e in poly.edges:
+            if isinstance(e, ArcEdge):
+                e._geom = None
+
+
+def _recompute_arcs(polygons: list[Polygon]) -> None:
+    for poly in polygons:
+        recompute_all_arcs(poly.edges)
+
+
 def _restore(polygons: list[Polygon], snap: dict[int, tuple[float, float]]) -> None:
     for p in _all_points(polygons):
         xy = snap.get(id(p))
         if xy is not None:
             p.x, p.y = xy
+    _invalidate_arcs(polygons)
 
 
 def snapshot_positions(polygons: list[Polygon]) -> dict[int, tuple[float, float]]:
@@ -61,6 +77,7 @@ def snapshot_positions(polygons: list[Polygon]) -> dict[int, tuple[float, float]
 
 def restore_positions(polygons: list[Polygon], snap: dict[int, tuple[float, float]]) -> None:
     _restore(polygons, snap)
+    _recompute_arcs(polygons)
 
 
 def _place_at_length(anchor: Point, moving: Point, length: float) -> None:
@@ -142,24 +159,77 @@ def _edge_pin_count(p1: Point, p2: Point, pinned: set[int]) -> int:
     return (1 if id(p1) in pinned else 0) + (1 if id(p2) in pinned else 0)
 
 
-def _fix_parallel(pc: ParallelConstraint, store: ConstraintStore, pinned: set[int], dist: dict[int, int]) -> None:
+def _edge_key(p1: Point, p2: Point) -> frozenset[int]:
+    return frozenset({id(p1), id(p2)})
+
+
+def _authority_edges_for_cp(
+    polygons: list[Polygon],
+    prefer_adjust: Point | None,
+) -> set[frozenset[int]]:
+    """
+    Przy przeciąganiu CP: odcinek przyległy do końców związanego z tym CP
+    ma autorytet kierunku. ∥ dogrywa partnera, zamiast cofać tę krawędź.
+    """
+    auth: set[frozenset[int]] = set()
+    if prefer_adjust is None or not prefer_adjust.is_control:
+        return auth
+    for poly in polygons:
+        owner = bezier_for_control(poly.edges, prefer_adjust)
+        if owner is None:
+            continue
+        # c1 ↔ p1, c2 ↔ p2 — tylko lokalny koniec, nie oba naraz (∥ góra∥dół)
+        if prefer_adjust is owner.c1:
+            ends = (owner.p1,)
+        elif prefer_adjust is owner.c2:
+            ends = (owner.p2,)
+        else:
+            ends = (owner.p1, owner.p2)
+        for v in ends:
+            incoming, outgoing = adjacent_edges(poly.edges, v)
+            for e in (incoming, outgoing):
+                if e is None or e is owner:
+                    continue
+                if isinstance(e, StraightEdge):
+                    auth.add(_edge_key(e.p1, e.p2))
+    return auth
+
+
+def _fix_parallel(
+    pc: ParallelConstraint,
+    store: ConstraintStore,
+    pinned: set[int],
+    dist: dict[int, int],
+    authority: set[frozenset[int]] | None = None,
+) -> None:
     sa = _edge_move_score(pc.a1, pc.a2, pinned, dist)
     sb = _edge_move_score(pc.b1, pc.b2, pinned, dist)
     if sa < 0 and sb < 0:
         return
 
-    # Krawędź z większą liczbą pinów = odniesienie (np. przy CP: koniec Béziera
-    # przylega do AB → trzymamy kierunek AB, dogrywamy partnera ∥).
-    pa = _edge_pin_count(pc.a1, pc.a2, pinned)
-    pb = _edge_pin_count(pc.b1, pc.b2, pinned)
-    if pa > pb and sb >= 0:
+    authority = authority or set()
+    ka = _edge_key(pc.a1, pc.a2)
+    kb = _edge_key(pc.b1, pc.b2)
+    a_auth = ka in authority
+    b_auth = kb in authority
+
+    # 1) krawędź z autorytetem ciągłości (np. po ruchu CP) = referencja
+    if a_auth and not b_auth and sb >= 0:
         ref1, ref2, m1, m2 = pc.a1, pc.a2, pc.b1, pc.b2
-    elif pb > pa and sa >= 0:
-        ref1, ref2, m1, m2 = pc.b1, pc.b2, pc.a1, pc.a2
-    elif sa >= sb:
+    elif b_auth and not a_auth and sa >= 0:
         ref1, ref2, m1, m2 = pc.b1, pc.b2, pc.a1, pc.a2
     else:
-        ref1, ref2, m1, m2 = pc.a1, pc.a2, pc.b1, pc.b2
+        # 2) więcej pinów = odniesienie; 3) inaczej wyższy dist = ruchoma
+        pa = _edge_pin_count(pc.a1, pc.a2, pinned)
+        pb = _edge_pin_count(pc.b1, pc.b2, pinned)
+        if pa > pb and sb >= 0:
+            ref1, ref2, m1, m2 = pc.a1, pc.a2, pc.b1, pc.b2
+        elif pb > pa and sa >= 0:
+            ref1, ref2, m1, m2 = pc.b1, pc.b2, pc.a1, pc.a2
+        elif sa >= sb:
+            ref1, ref2, m1, m2 = pc.b1, pc.b2, pc.a1, pc.a2
+        else:
+            ref1, ref2, m1, m2 = pc.a1, pc.a2, pc.b1, pc.b2
 
     direction = _unit_dir(ref1, ref2)
     if direction is None:
@@ -299,9 +369,11 @@ class ConstraintSolver:
         dist: dict[int, int] | None = None,
         only_ids: set[int] | None = None,
         max_iters: int | None = None,
+        authority: set[frozenset[int]] | None = None,
     ) -> bool:
         pinned = pinned or set()
         dist = dist or {}
+        authority = authority or set()
         lengths = self.store.all_lengths()
         parallels = self.store.all_parallels()
         limit = SETTLE_ITERS if max_iters is None else max_iters
@@ -318,11 +390,11 @@ class ConstraintSolver:
 
         for _ in range(limit):
             if priority_parallel is not None and not priority_parallel.is_satisfied(EPS):
-                _fix_parallel(priority_parallel, self.store, pinned, dist)
+                _fix_parallel(priority_parallel, self.store, pinned, dist, authority)
 
             for pc in parallels:
                 if not pc.is_satisfied(EPS):
-                    _fix_parallel(pc, self.store, pinned, dist)
+                    _fix_parallel(pc, self.store, pinned, dist, authority)
 
             if priority_length is not None and not priority_length.is_satisfied(EPS):
                 if pinned:
@@ -385,6 +457,8 @@ class ConstraintSolver:
 
         outer = PROPAGATE_ITERS_INTERACTIVE if interactive else PROPAGATE_ITERS
         settle_cap = SETTLE_ITERS_INTERACTIVE if interactive else SETTLE_ITERS
+        # przy CP: odcinki przyległe mają autorytet kierunku (∥ idzie za ciągłością)
+        authority = _authority_edges_for_cp(polygons, prefer_adjust)
 
         dirty: deque[Point] = deque(seed_pts)
         in_q = {id(p) for p in seed_pts}
@@ -448,11 +522,10 @@ class ConstraintSolver:
                 for pc in parallels:
                     if not pc.involves_point(p) or pc.is_satisfied(EPS):
                         continue
-                    _fix_parallel(pc, self.store, pinned, dist)
+                    _fix_parallel(pc, self.store, pinned, dist, authority)
 
                 enqueue_moved(before)
 
-        # Szybka ścieżka: brak ograniczeń — jedna ciągłość + uchwyty
         if not has_constraints:
             apply_continuities()
             apply_continuities(handles_only=True)
@@ -462,33 +535,21 @@ class ConstraintSolver:
             if self.scene_ok(polygons):
                 return True
 
+            # 1) ciągłość ustawia kierunek przyległych odcinków (autorytet)
             before = _snapshot(polygons)
             apply_continuities()
             enqueue_moved(before)
 
+            # 2) ∥ / długości — partnerzy podążają za autorytetem, nie cofają go
             drain_dirty()
             before = _snapshot(polygons)
-            self.settle_all(pinned=pinned, dist=dist, max_iters=settle_cap)
+            self.settle_all(
+                pinned=pinned, dist=dist, max_iters=settle_cap, authority=authority
+            )
             for poly in polygons:
                 sync_bezier_handles_from_snap(poly.edges, before, pinned=pinned)
 
-            apply_continuities(handles_only=True)
-
-            if self.scene_ok(polygons):
-                return True
-
-            if interactive:
-                # w drag nie dokładamy drugiej pełnej rundy settle
-                break
-
-            before = _snapshot(polygons)
-            apply_continuities()
-            enqueue_moved(before)
-            drain_dirty()
-            before = _snapshot(polygons)
-            self.settle_all(pinned=pinned, dist=dist, max_iters=settle_cap)
-            for poly in polygons:
-                sync_bezier_handles_from_snap(poly.edges, before, pinned=pinned)
+            # 3) tylko uchwyty — wierzchołki (i kierunki odcinków) zostają
             apply_continuities(handles_only=True)
 
             if self.scene_ok(polygons):
@@ -582,29 +643,50 @@ class ConstraintSolver:
         polygons: list[Polygon],
         drag_snap: dict[int, tuple[float, float]],
         origin: tuple[float, float],
-    ) -> None:
+        *,
+        interactive: bool = False,
+    ) -> bool:
+        """
+        Ustaw point pod (tx,ty) bez łamania ograniczeń/ciągłości.
+        Translacja własnego wielokąta tylko gdy lokalna naprawa jest niemożliwa.
+        Zwraca True gdy scena jest spójna po operacji.
+        """
         _restore(polygons, drag_snap)
         dx = tx - origin[0]
         dy = ty - origin[1]
 
         if abs(dx) < 1e-12 and abs(dy) < 1e-12:
-            return
+            return self.scene_ok(polygons)
 
-        involved = any(c.involves_point(point) for c in self.store.items)
-        if not involved:
+        _restore(polygons, drag_snap)
+        point.move_to(tx, ty)
+        self.propagate_repair(
+            polygons,
+            pinned={id(point)},
+            seeds=[point],
+            prefer_adjust=point,
+            interactive=interactive,
+        )
+        point.move_to(tx, ty)
+        if self.scene_ok(polygons):
+            return True
+
+        # krótka ścieżka mogła nie dojść — pełna naprawa zanim uznamy „nie da się”
+        if interactive:
+            _restore(polygons, drag_snap)
             point.move_to(tx, ty)
-            return
+            self.propagate_repair(
+                polygons,
+                pinned={id(point)},
+                seeds=[point],
+                prefer_adjust=point,
+                interactive=False,
+            )
+            point.move_to(tx, ty)
+            if self.scene_ok(polygons):
+                return True
 
-        _restore(polygons, drag_snap)
-        point.move_to(tx, ty)
-        if self._propagate_from_fixed({point}):
-            return
-
-        _restore(polygons, drag_snap)
-        point.move_to(tx, ty)
-        if self.settle_with_pinned(point, polygons):
-            return
-
+        # ostateczność: sztywna translacja własnego poly (kierunki ⇒ ∥ OK)
         _restore(polygons, drag_snap)
         moved: set[int] = set()
         for poly in polygons:
@@ -623,3 +705,6 @@ class ConstraintSolver:
                     moved.add(id(p))
                     ox, oy = drag_snap[id(p)]
                     p.move_to(ox + dx, oy + dy)
+        point.move_to(tx, ty)
+        _recompute_arcs(polygons)
+        return self.scene_ok(polygons)
